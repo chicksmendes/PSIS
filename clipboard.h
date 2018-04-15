@@ -3,15 +3,14 @@
 #define PASTE 1
 #define COPY 0
 #define NUMBEROFPOSITIONS 10
-#define SOCKET_ADDR "./socket"
-#define BYTESTOSEND 5
+#define SOCKET_ADDR "./CLIPBOARD_SOCKET"
 
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
-typedef struct message {
+typedef struct _message {
 	size_t size;
 	int region;
 	int action;
@@ -20,4 +19,3 @@ typedef struct message {
 int clipboard_connect(char * clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
-

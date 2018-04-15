@@ -5,61 +5,71 @@
 #include <string.h>
 
 int main(){
-		int action, region, copyData, receivedData;
-		char dadosSent[10], dadosReceived[10];
-		char aux[50];
+	int action, region, copyData, pasteData;
+	char aux[50], dadosSent[10], dadosReceived[10];
 
-		int fd = clipboard_connect("./");
-		
-		if(fd== -1){
-			exit(-1);
-		}
-
-		while(1) {
-			// Ask the action to be taken
-			printf("\nDo you want to COPY (0) or PASTE (1)? ");
-			fgets(aux, 50, stdin);
-			sscanf(aux, "%d", &action);
-			// COPY
-			if(action == COPY) {
-				// Ask the data to store to the user
-				printf("Write something: ");
-				fgets(dadosSent, 10, stdin);
-				dadosSent[strlen(dadosSent)-1] = '\0';
-
-				// Ask the region
-				printf("Region [0-9]: ");
-				fgets(aux, 50, stdin);
-				sscanf(aux, "%d", &region);
-
-				// Sends the data to the clipboard
-				copyData = clipboard_copy(fd, region, dadosSent, strlen(dadosSent)+1);
-				if(copyData < 1) {
-					printf("ERROR ON COPY\n");
-				}
-				else {
-					printf("Copied %d\n", copyData);
-				}
-			}
-			// PASTE
-			else if(action == PASTE) {
-				// Ask the region
-				printf("Region [0-9]: ");
-				fgets(aux, 50, stdin);
-				sscanf(aux, "%d", &region);
-
-				// Receives the data from the keyboard
-				receivedData = clipboard_paste(fd, region, dadosReceived, 10*sizeof(char));	
-
-				if(receivedData < 1) {
-					printf("ERROR ON PASTE\n");
-				}	
-				printf("Data Received %d %s\n",receivedData, dadosReceived);
-			} 
-			else {
-				break;
-			}
-		}
-		close(fd);
-		exit(0);
+	// Connects to the cliboard
+	int sock_fd = clipboard_connect("./");
+	if(sock_fd == -1){
+		exit(-1);
 	}
+
+	while(1) {
+		// Ask the user the action that wants to perform
+		printf("\nCOPY [0] or PASTE [1]: ");
+		fgets(aux, 50, stdin);
+		sscanf(aux, "%d", &action);
+
+		// Copies the data read to the clipboard server
+		if(action == COPY) {
+			// Ask the user for some data to be stored
+			printf("Write something: ");
+			fgets(dadosSent, 10, stdin);
+			// Terminates the received string
+			dadosSent[strlen(dadosSent) - 1] = '\0';
+
+			// Ask the region to store the data
+			printf("Region [0-9]: ");
+			fgets(aux, 50, stdin);
+			sscanf(aux, "%d", &region);
+
+			// Sends the data to the cliboard server
+			copyData = clipboard_copy(sock_fd, region, dadosSent, strlen(dadosSent) + 1);
+			if(copyData < 1) {
+				printf("Error on copy\n");
+			}
+			else {
+				printf("Sent %d - data: %s\n", copyData, dadosSent);
+			}
+		}
+		else if(action == PASTE) {
+			// Ask the region from where will paste data
+			printf("Region [0-9]: ");
+			fgets(aux, 50, stdin);
+			sscanf(aux, "%d", &region);
+
+			// Sends the information to the clipboard
+			pasteData = clipboard_paste(sock_fd, region, dadosReceived, 10*sizeof(char));
+			if(pasteData < 1) {
+				printf("Didn't receive paste information\n");
+			}
+			else {
+				printf("Received %d - data: %s\n", pasteData, dadosReceived);
+			}
+		}
+		else {
+			printf("Closing connection\n");
+			break;
+		}
+	}
+
+	/*char dados[10];
+	int dados_int;
+	fgets(dados, 10, stdin);
+	write(fd, dados, 10);
+	read(fd+1, &dados_int, sizeof(dados_int));
+	printf("Received %d\n", dados_int);*/
+	
+	close(sock_fd);
+	exit(0);
+}
