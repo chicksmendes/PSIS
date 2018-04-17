@@ -8,10 +8,13 @@
 
 #include "clipboard.h"
 
+int sock_fd_inet = 0;
+
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
 	printf("Caught signal Ctr-C\n");
 	unlink(SOCKET_ADDR);
+	close(sock_fd_inet);
 	exit(0);
 }
 
@@ -35,7 +38,7 @@ int main(int argc, char const *argv[]) {
 
 	char ip[14];
 	int port = 0;
-	int sock_fd_inet = 0;
+	
 	
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
 	signal(SIGINT, ctrl_c_callback_handler);
@@ -143,9 +146,11 @@ int main(int argc, char const *argv[]) {
 
 		read(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
 
+		printf("Backup\n");
 		for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 		{
 			if(messageBackup.size[i] != 0) {
+				printf("region %d", i);
 				data = (char *)malloc(sizeof(char)*messageBackup.size[i]);
 				if(data == NULL) {
 					perror("malloc");
@@ -157,7 +162,10 @@ int main(int argc, char const *argv[]) {
 				int numberOfBytesBackup = read(sock_fd_inet, data, clipboard.size[i]);
 				if(numberOfBytesBackup != clipboard.size[i]) {
 					printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, clipboard.size[i]);
+					break;
 				}
+				clipboard.clipboard[i] = data;
+				printf("received %s, size %d\n", clipboard.clipboard[i], numberOfBytesBackup);
 			}
 		}
 	}
@@ -269,6 +277,7 @@ int main(int argc, char const *argv[]) {
 	}
 		
 	close(sock_fd_inet);
+	unlink(SOCKET_ADDR);
 
 	exit(0);
 	

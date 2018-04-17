@@ -40,6 +40,7 @@ int main(int argc, char const *argv[])
 		exit(-1);
 	}
 
+
 	local_addr.sin_family = AF_INET;
 	local_addr.sin_port= htons(atoi(argv[1]));
 	local_addr.sin_addr.s_addr= INADDR_ANY;
@@ -103,6 +104,8 @@ int main(int argc, char const *argv[])
 				for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 				{
 					if(messageClipboard.size[i] != 0) {
+						printf("region %d ", i);
+						printf("clipboard content %s size %d\n", clipboard.clipboard[i], clipboard.size[i]);
 						write(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
 					} 
 				}
@@ -117,15 +120,13 @@ int main(int argc, char const *argv[])
 					write(clipboard_client, &error, sizeof(int));
 					break;
 				}
-				success = 1;
-			printf("success %d\n", success);
+
 				// Informs the client that as allocated memory to receive the data
 				write(clipboard_client, &success, sizeof(int));
-			printf("success' %d\n", success);
 
 				// Store the size of the clipboard region
 				clipboard.size[messageClipboard.region] = sizeof(char)*messageClipboard.size[messageClipboard.region];
-			printf("size %d\n", clipboard.size[messageClipboard.region]);
+			printf("region %d size %d\n", messageClipboard.region, clipboard.size[messageClipboard.region]);
 
 				// Receives the data from the client
 				int numberOfBytesCopied = read(clipboard_client, data, clipboard.size[messageClipboard.region]);
