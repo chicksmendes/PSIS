@@ -34,6 +34,7 @@ int main(int argc, char const *argv[]) {
 
 	char ip[14];
 	int port = 0;
+	int sock_fd_inet = 0;
 	
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
 	signal(SIGINT, ctrl_c_callback_handler);
@@ -91,7 +92,7 @@ int main(int argc, char const *argv[]) {
 
 	// Create socket inet
 	if(modeOfFunction == 1) {
-		int sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
+		sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
 		if(sock_fd_inet == -1) {
 			perror("socket");
 			exit(-1);
@@ -115,7 +116,7 @@ int main(int argc, char const *argv[]) {
 	}
 
 	// Clipboard data
-	char *clipboard[10];
+	clipboard_struct clipboard;
 	// New data received
 	char *data = NULL;
 
@@ -128,7 +129,7 @@ int main(int argc, char const *argv[]) {
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
 	{
-		clipboard[i] = NULL;
+		clipboard.clipboard[i] = NULL;
 	}
 
 	printf("Ready to accept clients\n");
@@ -167,23 +168,27 @@ int main(int argc, char const *argv[]) {
 				if(data == NULL) {
 					write(client, &error, sizeof(int));
 					break;
-				}	
+				}
+
+				// Store the size of the clipboard region
+				clipboard.size[messageReceived.region] = sizeof(char)*messageReceived.size;
+
 				// Informs the client that as allocated memory to receive the data
 				write(client, &success, sizeof(int));
 
 				// Receives the data from the client
-				int numberOfBytesCopied = read(client, data, messageReceived.size*sizeof(char));
+				int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
 
 				// Erases old data
-				if(clipboard[messageReceived.region] != NULL) {
+				if(clipboard.clipboard[messageReceived.region] != NULL) {
 					printf("Region cleared\n");
-					free(clipboard[messageReceived.region]);
+					free(clipboard.clipboard[messageReceived.region]);
 				}
 
 				// Assigns new data to the clipboard
-				clipboard[messageReceived.region] = data;
+				clipboard.clipboard[messageReceived.region] = data;
 
-				printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard[messageReceived.region]);
+				printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
 			
 				if(modeOfFunction == 1) {
 
@@ -193,7 +198,7 @@ int main(int argc, char const *argv[]) {
 				//printf("Received information - action: PASTE\n");
 				printf("\nPASTE\n");
 				// Confirms if the client has enough space to store the PASTE data
-				if(messageReceived.size < strlen(clipboard[messageReceived.region]) + 1) {
+				if(messageReceived.size < clipboard.size[messageReceived.region]) {
 					write(client, &error, sizeof(int));
 				}
 				else {
@@ -201,15 +206,14 @@ int main(int argc, char const *argv[]) {
 
 					// Loads the structure with the information to the client
 					messageSend.action = PASTE;
-					messageSend.size = strlen(clipboard[messageReceived.region]) + 1;
+					messageSend.size = clipboard.size[messageReceived.region];
 					messageSend.region = messageReceived.region;
 
 					write(client, &messageSend, sizeof(Message_struct));
 
 					// Sends the data to the client
-					int numberOfBytesPaste = write(client, clipboard[messageSend.region], messageSend.size*sizeof(char));
-				
-					printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard[messageSend.region]);
+					int numberOfBytesPaste = write(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
+					printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard.clipboard[messageSend.region]);
 				}
 			}
 		}
