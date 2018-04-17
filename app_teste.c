@@ -6,7 +6,7 @@
 
 int main(){
 	int action, region, copyData, pasteData;
-	char aux[50], dadosSent[10], dadosReceived[10];
+	char aux[100], dadosSent[100], dadosReceived[100];
 
 	// Connects to the cliboard
 	int sock_fd = clipboard_connect("./");
@@ -24,13 +24,13 @@ int main(){
 		if(action == COPY) {
 			// Ask the user for some data to be stored
 			printf("Write something: ");
-			fgets(dadosSent, 10, stdin);
+			fgets(dadosSent, 100, stdin);
 			// Terminates the received string
 			dadosSent[strlen(dadosSent) - 1] = '\0';
 
 			// Ask the region to store the data
 			printf("Region [0-9]: ");
-			fgets(aux, 50, stdin);
+			fgets(aux, 100, stdin);
 			sscanf(aux, "%d", &region);
 
 			// Sends the data to the cliboard server
@@ -45,11 +45,11 @@ int main(){
 		else if(action == PASTE) {
 			// Ask the region from where will paste data
 			printf("Region [0-9]: ");
-			fgets(aux, 50, stdin);
+			fgets(aux, 100, stdin);
 			sscanf(aux, "%d", &region);
 
 			// Sends the information to the clipboard
-			pasteData = clipboard_paste(sock_fd, region, dadosReceived, 10*sizeof(char));
+			pasteData = clipboard_paste(sock_fd, region, dadosReceived, 100*sizeof(char));
 			if(pasteData < 1) {
 				printf("Didn't receive paste information\n");
 			}
