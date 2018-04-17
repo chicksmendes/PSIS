@@ -10,9 +10,19 @@
 
 int sock_fd_inet = 0;
 
+// Clipboard data
+	clipboard_struct clipboard;
+	// New data received
+	char *data = NULL;
+
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
 	printf("Caught signal Ctr-C\n");
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		free(clipboard.clipboard[i]);
+	}
+	free(data);
 	unlink(SOCKET_ADDR);
 	close(sock_fd_inet);
 	exit(0);

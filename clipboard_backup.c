@@ -10,9 +10,19 @@
 
 int sock_fd_inet;
 
+// Clipboard data
+clipboard_struct clipboard;
+// New data received
+char *data = NULL;
+
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
 	printf("Caught signal Ctr-C\n");
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		free(clipboard.clipboard[i]);
+	}
+	free(data);
 	close(sock_fd_inet);
 	exit(0);
 }
@@ -57,16 +67,12 @@ int main(int argc, char const *argv[])
 
 	Message_struct_clipboard messageClipboard;
 
-	// Clipboard data
-	clipboard_struct clipboard;
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
 	{
 		clipboard.size[i] = 0;
 		clipboard.clipboard[i] = NULL;
 	}
-	// New data received
-	char *data = NULL;
 
 	while(1) {
 		printf(".\n");
