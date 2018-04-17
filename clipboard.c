@@ -25,6 +25,7 @@ int main(int argc, char const *argv[]) {
 	int modeOfFunction = 0;
 	int error = 0;
 	int success = 1;
+	int statusBackup = 0;
 
 	// Socket structs
 	struct sockaddr_un local_addr;
@@ -124,12 +125,41 @@ int main(int argc, char const *argv[]) {
 	Message_struct messageReceived, messageSend;
 
 	// Structs to communicate with the parent clibpoard 
-	Message_struct_clipboard messagebackup;
+	Message_struct_clipboard messageBackup;
 
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
 	{
 		clipboard.clipboard[i] = NULL;
+	}
+
+	// Loads data from Backup
+	if(modeOfFunction == 1) {
+		messageBackup.action = BACKUP;
+		statusBackup = write(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+		if(statusBackup == 0) {
+			printf("cannot acess backup\n");
+		}
+
+		read(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+
+		for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+		{
+			if(messageBackup.size[i] != 0) {
+				data = (char *)malloc(sizeof(char)*messageBackup.size[i]);
+				if(data == NULL) {
+					perror("malloc");
+					exit(0);
+				}
+
+				// Store the size of the clipboard region
+				clipboard.size[i] = messageBackup.size[i];
+				int numberOfBytesBackup = read(sock_fd_inet, data, clipboard.size[i]);
+				if(numberOfBytesBackup != clipboard.size[i]) {
+					printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, clipboard.size[i]);
+				}
+			}
+		}
 	}
 
 	printf("Ready to accept clients\n");
@@ -190,8 +220,21 @@ int main(int argc, char const *argv[]) {
 
 				printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
 			
+				// Performs a backup of the information
 				if(modeOfFunction == 1) {
+					messageBackup.action = COPY;
+					messageBackup.region = messageReceived.region;
+					messageBackup.size[messageReceived.region] = clipboard.size[messageReceived.region];
 
+					write(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+				
+					// Read if can send the data
+					read(sock_fd_inet, &statusBackup, sizeof(int));
+					printf("statusBackup %d\n", statusBackup);
+					if(statusBackup == 1) {
+						write(sock_fd_inet, clipboard.clipboard[messageBackup.region], messageBackup.size[messageReceived.region]);
+						printf("Backup new data\n");
+					}
 				}
 			}
 			else if(messageReceived.action == PASTE) {

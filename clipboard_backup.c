@@ -19,6 +19,8 @@ void ctrl_c_callback_handler(int signum){
 
 int main(int argc, char const *argv[])
 {
+	int error = 0;
+	int success = 1;
 	struct sockaddr_in local_addr;
 	struct sockaddr_in client_addr;
 
@@ -46,7 +48,7 @@ int main(int argc, char const *argv[])
 		perror("bind");
 		exit(-1);
 	}
-	printf(" socket created and binded \n");
+	printf("Socket created and binded\n");
 
 	listen(sock_fd_inet, 5);
 
@@ -55,13 +57,12 @@ int main(int argc, char const *argv[])
 	Message_struct_clipboard messageClipboard;
 
 	// Clipboard data
-	char *clipboard[10];
-	int clipboardDataSize[10];
+	clipboard_struct clipboard;
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
 	{
-		clipboardDataSize[i] = 0;
-		clipboard[i] = NULL;
+		clipboard.size[i] = 0;
+		clipboard.clipboard[i] = NULL;
 	}
 	// New data received
 	char *data = NULL;
@@ -74,6 +75,8 @@ int main(int argc, char const *argv[])
 
 		int clipboard_client = accept(sock_fd_inet, (struct sockaddr *) & client_addr, &size_addr);
 
+		printf("Clipboard connected\n");
+
 		while(1) {
 			int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct_clipboard));
 			if(numberOfBytesReceived == 0) {
@@ -81,21 +84,65 @@ int main(int argc, char const *argv[])
 				break;
 			}
 
+			if(numberOfBytesReceived != sizeof(Message_struct_clipboard)) {
+				printf("Didn't received the right message\n");
+				continue;
+			}
+
 			if(messageClipboard.action == BACKUP) {
 				printf("BACKUP\n");
 				
+				for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+				{
+					messageClipboard.size[i] = clipboard.size[i];
+				}
 
 				// Sends the amount of data present in the clipboard
-				write(clipboard_client, messageClipboard, sizeof(Message_struct_clipboard));
+				write(clipboard_client, &messageClipboard, sizeof(Message_struct_clipboard));
 
 				for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 				{
 					if(messageClipboard.size[i] != 0) {
-						write(clipboard_client, clipboard[i], messageClipboard.size[i])
+						write(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
 					} 
 				}
+			}
+			if(messageClipboard.action == COPY) {
+				//printf("Received information - action: COPY\n");
+				printf("\nCOPY\n");
+				// Allocs memory to store new data
+				data = (char *)malloc(sizeof(char)*messageClipboard.size[messageClipboard.region]);
+				if(data == NULL) {
+					printf("Error alocating memory\n");
+					write(clipboard_client, &error, sizeof(int));
+					break;
+				}
+				success = 1;
+			printf("success %d\n", success);
+				// Informs the client that as allocated memory to receive the data
+				write(clipboard_client, &success, sizeof(int));
+			printf("success' %d\n", success);
 
+				// Store the size of the clipboard region
+				clipboard.size[messageClipboard.region] = sizeof(char)*messageClipboard.size[messageClipboard.region];
+			printf("size %d\n", clipboard.size[messageClipboard.region]);
+
+				// Receives the data from the client
+				int numberOfBytesCopied = read(clipboard_client, data, clipboard.size[messageClipboard.region]);
+			printf("numberOfBytesCopied %d\n", numberOfBytesCopied);
+				// Erases old data
+				if(clipboard.clipboard[messageClipboard.region] != NULL) {
+					printf("Region cleared\n");
+					free(clipboard.clipboard[messageClipboard.region]);
+				}
+
+				// Assigns new data to the clipboard
+				clipboard.clipboard[messageClipboard.region] = data;
+
+				printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
+			
 			}
 		}
+		close(clipboard_client);
 	}
 }
