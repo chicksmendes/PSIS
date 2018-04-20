@@ -16,11 +16,11 @@
 typedef struct _clipboard
 {
 	char *clipboard[NUMBEROFPOSITIONS];
-	int size[NUMBEROFPOSITIONS];
+	size_t size[NUMBEROFPOSITIONS];
 } clipboard_struct;
 
 typedef struct _message {
-	size_t size;
+	size_t size; //[NUMBEROFPOSITIONS]
 	int region;
 	int action;
 } Message_struct;

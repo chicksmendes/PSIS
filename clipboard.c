@@ -24,7 +24,7 @@ void ctrl_c_callback_handler(int signum){
 	{
 		free(clipboard.clipboard[i]);
 	}
-	free(data);
+	printf("free clipboard\n");
 	unlink(SOCKET_ADDR);
 	close(sock_fd_inet);
 	exit(0);
@@ -108,7 +108,7 @@ clipboard_struct backup(int sock_fd_inet, clipboard_struct clipboard) {
 			clipboard.size[i] = messageBackup.size[i];
 			int numberOfBytesBackup = read(sock_fd_inet, data, clipboard.size[i]);
 			if(numberOfBytesBackup != clipboard.size[i]) {
-				printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, clipboard.size[i]);
+				printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, (int ) clipboard.size[i]);
 				break;
 			}
 			clipboard.clipboard[i] = data;
@@ -211,7 +211,7 @@ int main(int argc, char const *argv[]) {
 	Message_struct_clipboard messageBackup;
 	
 	// Clipboard data
-	clipboard_struct clipboard;
+	//clipboard_struct clipboard;
 	
 	
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
@@ -242,15 +242,15 @@ int main(int argc, char const *argv[]) {
 		exit(0);
 	}
 
+	//unlink(SOCKET_ADDR);
+
 	// Create socket unix
 	int sock_fd_unix = connect_unix(&local_addr);
-
 
 	// Create socket inet
 	if(modeOfFunction == 1) {
 		sock_fd_inet = connect_inet(&backup_addr, port, ip);
 	}
-
 
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)

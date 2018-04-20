@@ -22,7 +22,6 @@ void ctrl_c_callback_handler(int signum){
 	{
 		free(clipboard.clipboard[i]);
 	}
-	free(data);
 	close(sock_fd_inet);
 	exit(0);
 }
@@ -111,7 +110,7 @@ int main(int argc, char const *argv[])
 				{
 					if(messageClipboard.size[i] != 0) {
 						printf("region %d ", i);
-						printf("clipboard content %s size %d\n", clipboard.clipboard[i], clipboard.size[i]);
+						printf("clipboard content %s size %d\n", clipboard.clipboard[i], (int ) clipboard.size[i]);
 						write(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
 					} 
 				}
@@ -132,11 +131,10 @@ int main(int argc, char const *argv[])
 
 				// Store the size of the clipboard region
 				clipboard.size[messageClipboard.region] = sizeof(char)*messageClipboard.size[messageClipboard.region];
-			printf("region %d size %d\n", messageClipboard.region, clipboard.size[messageClipboard.region]);
 
 				// Receives the data from the client
 				int numberOfBytesCopied = read(clipboard_client, data, clipboard.size[messageClipboard.region]);
-			printf("numberOfBytesCopied %d\n", numberOfBytesCopied);
+
 				// Erases old data
 				if(clipboard.clipboard[messageClipboard.region] != NULL) {
 					printf("Region cleared\n");
@@ -146,7 +144,7 @@ int main(int argc, char const *argv[])
 				// Assigns new data to the clipboard
 				clipboard.clipboard[messageClipboard.region] = data;
 
-				printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
+				printf("Received %d bytes in region %d - data: %s\n", numberOfBytesCopied, messageClipboard.region, clipboard.clipboard[messageClipboard.region]);
 			
 			}
 		}
