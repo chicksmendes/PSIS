@@ -83,17 +83,17 @@ int connect_inet(struct sockaddr_in *backup_addr, int port, char *ip) {
 	return sock_fd;
 }
 
-clipboard_struct backup(int sock_fd_inet, clipboard_struct clipboard) {
-	Message_struct_clipboard messageBackup;
+clipboard_struct backup(int sock_fd_inet) {
+	Message_struct messageBackup;
 	messageBackup.action = BACKUP;
-	int statusBackup = write(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+	int statusBackup = write(sock_fd_inet, &messageBackup, sizeof(Message_struct));
 	if(statusBackup == 0) {
 		printf("cannot acess backup\n");
 	}
 
-	read(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+	read(sock_fd_inet, &messageBackup, sizeof(Message_struct));
 
-	printf("Backup\n");
+	printf("Performing backup\n");
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		if(messageBackup.size[i] != 0) {
@@ -112,66 +112,65 @@ clipboard_struct backup(int sock_fd_inet, clipboard_struct clipboard) {
 				break;
 			}
 			clipboard.clipboard[i] = data;
-			printf("received %s, size %d\n", clipboard.clipboard[i], numberOfBytesBackup);
+			printf("	received %s, size %d\n", clipboard.clipboard[i], numberOfBytesBackup);
 		}
 	}
 
 	return clipboard;
 }
 
-int copyBackup(clipboard_struct *clipboard, Message_struct messageReceived, Message_struct_clipboard messageBackup, int sock_fd_inet) {
+int copyBackup(Message_struct messageReceived, int sock_fd_inet) {
 	int statusBackup;
 
-	messageBackup.action = COPY;
-	messageBackup.region = messageReceived.region;
-	messageBackup.size[messageReceived.region] = clipboard->size[messageReceived.region];
-
-	write(sock_fd_inet, &messageBackup, sizeof(Message_struct_clipboard));
+	write(sock_fd_inet, &messageReceived, sizeof(Message_struct));
 
 	// Read if can send the data
 	read(sock_fd_inet, &statusBackup, sizeof(int));
 	if(statusBackup == 1) {
-		write(sock_fd_inet, clipboard->clipboard[messageBackup.region], messageBackup.size[messageReceived.region]);
+		write(sock_fd_inet, clipboard.clipboard[messageReceived.region], messageReceived.size[messageReceived.region]);
 		printf("Backup new data\n");
+		return 1;
 	}
-
-	return 1;
+	else {
+		printf("Can't backup data\n");
+	}
+	return 0;
 }
 
-int copy(clipboard_struct *clipboard, Message_struct messageReceived, int client) {
+int copy(Message_struct messageReceived, int client) {
 	// Allocs memory to store new data
-	data = (char *)malloc(sizeof(char)*messageReceived.size);
+	data = (char *)malloc(sizeof(char)*messageReceived.size[messageReceived.region]);
 	if(data == NULL) {
 		write(client, &error, sizeof(int));
 		return 0;
 	}
 
 	// Store the size of the clipboard region
-	clipboard->size[messageReceived.region] = sizeof(char)*messageReceived.size;
+	clipboard.size[messageReceived.region] = messageReceived.size[messageReceived.region];
 
 	// Informs the client that as allocated memory to receive the data
 	write(client, &success, sizeof(int));
 
 	// Receives the data from the client
-	int numberOfBytesCopied = read(client, data, clipboard->size[messageReceived.region]);
+	int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
 
 	// Erases old data
-	if(clipboard->clipboard[messageReceived.region] != NULL) {
+	if(clipboard.clipboard[messageReceived.region] != NULL) {
 		printf("Region cleared\n");
-		free(clipboard->clipboard[messageReceived.region]);
+		free(clipboard.clipboard[messageReceived.region]);
 	}
 
 	// Assigns new data to the clipboard
-	clipboard->clipboard[messageReceived.region] = data;
+	clipboard.clipboard[messageReceived.region] = data;
 
-	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard->clipboard[messageReceived.region]);
+	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
 
 	return 1;
 }
 
-int paste(Message_struct messageReceived, clipboard_struct *clipboard, int client) {
+int paste(Message_struct messageReceived, int client) {
 	Message_struct messageSend;
-	if(messageReceived.size < clipboard->size[messageReceived.region]) {
+	if(messageReceived.size[messageReceived.region] < clipboard.size[messageReceived.region]) {
 		write(client, &error, sizeof(int));
 	}
 	else {
@@ -179,14 +178,14 @@ int paste(Message_struct messageReceived, clipboard_struct *clipboard, int clien
 
 		// Loads the structure with the information to the client
 		messageSend.action = PASTE;
-		messageSend.size = clipboard->size[messageReceived.region];
+		messageSend.size[messageReceived.region] = clipboard.size[messageReceived.region];
 		messageSend.region = messageReceived.region;
 
 		write(client, &messageSend, sizeof(Message_struct));
 
 		// Sends the data to the client
-		int numberOfBytesPaste = write(client, clipboard->clipboard[messageSend.region], clipboard->size[messageReceived.region]);
-		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard->clipboard[messageSend.region]);
+		int numberOfBytesPaste = write(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
+		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard.clipboard[messageSend.region]);
 	}
 
 	return 1;
@@ -208,11 +207,7 @@ int main(int argc, char const *argv[]) {
 	// Structs to communicate with the client
 	Message_struct messageReceived, messageSend;
 	// Structs to communicate with the parent clibpoard 
-	Message_struct_clipboard messageBackup;
-	
-	// Clipboard data
-	//clipboard_struct clipboard;
-	
+	Message_struct messageBackup;
 	
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
 	signal(SIGINT, ctrl_c_callback_handler);
@@ -256,11 +251,12 @@ int main(int argc, char const *argv[]) {
 	for (int i = 0; i < 10; i++)
 	{
 		clipboard.clipboard[i] = NULL;
+		clipboard.size[i] = 0;
 	}
 
 	// Loads data from Backup
 	if(modeOfFunction == 1) {
-		clipboard = backup(sock_fd_inet, clipboard);
+		clipboard = backup(sock_fd_inet);
 	}
 
 	printf("Ready to accept clients\n");
@@ -293,14 +289,14 @@ int main(int argc, char const *argv[]) {
 
 			if(messageReceived.action == COPY) {
 				printf("\nCOPY\n");
-				if(copy(&clipboard, messageReceived, client) == 0) {
+				if(copy(messageReceived, client) == 0) {
 					printf("Error on copy\n");
 					break;
 				}
 
 				// Performs a backup of the information
 				if(modeOfFunction == 1) {
-					if(copyBackup(&clipboard, messageReceived, messageBackup, sock_fd_inet) == 0) {
+					if(copyBackup(messageReceived, sock_fd_inet) == 0) {
 						printf("Error backing up new data\n");
 					}
 				}
@@ -309,16 +305,12 @@ int main(int argc, char const *argv[]) {
 				//printf("Received information - action: PASTE\n");
 				printf("\nPASTE\n");
 
-				if(paste(messageReceived, &clipboard, client) == 0) {
+				if(paste(messageReceived, client) == 0) {
 					printf("Error on pasting\n");
 				}
 			}
 		}
 	}
-		
-	close(sock_fd_inet);
-	unlink(SOCKET_ADDR);
 
 	exit(0);
-	
 }

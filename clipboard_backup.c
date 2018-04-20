@@ -64,7 +64,7 @@ int main(int argc, char const *argv[])
 
 	printf("Ready to accept connections\n");
 
-	Message_struct_clipboard messageClipboard;
+	Message_struct messageClipboard;
 
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
@@ -84,13 +84,13 @@ int main(int argc, char const *argv[])
 		printf("Clipboard connected\n");
 
 		while(1) {
-			int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct_clipboard));
+			int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct));
 			if(numberOfBytesReceived == 0) {
 				printf("Clipboard disconected\n");
 				break;
 			}
 
-			if(numberOfBytesReceived != sizeof(Message_struct_clipboard)) {
+			if(numberOfBytesReceived != sizeof(Message_struct)) {
 				printf("Didn't received the right message\n");
 				continue;
 			}
@@ -104,7 +104,7 @@ int main(int argc, char const *argv[])
 				}
 
 				// Sends the amount of data present in the clipboard
-				write(clipboard_client, &messageClipboard, sizeof(Message_struct_clipboard));
+				write(clipboard_client, &messageClipboard, sizeof(Message_struct));
 
 				for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 				{

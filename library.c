@@ -51,8 +51,8 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 	}
 
 	// Loads the stuct with the information
-	message.size = count;
-	message.region = region;
+	message.region = (size_t) region;
+	message.size[message.region] = count;
 	message.action = COPY;
 
 	// Informs the server of the action that the client wants to take - COPY
@@ -92,8 +92,8 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 	}
 
 	// Loads the stuct with the information
-	message.size = count;
 	message.region = region;
+	message.size[message.region] = (size_t) count;
 	message.action = PASTE;
 
 	// Informs the server of the action that the client wants to take - PASTE
@@ -106,7 +106,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 		read(clipboard_id, &message, sizeof(Message_struct));
 
 		// Reads the data from the clipboard
-		numberOfBytesReceived = read(clipboard_id, buf, message.size*sizeof(char));
+		numberOfBytesReceived = read(clipboard_id, buf, message.size[message.region]*sizeof(char));
 
 		//printf("Received %d bytes - data: %s\n", numberOfBytesReceived, (char *) buf);
 	}

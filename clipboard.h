@@ -20,17 +20,10 @@ typedef struct _clipboard
 } clipboard_struct;
 
 typedef struct _message {
-	size_t size; //[NUMBEROFPOSITIONS]
-	int region;
-	int action;
-} Message_struct;
-
-typedef struct _messageClipboards
-{
 	size_t size[NUMBEROFPOSITIONS];
 	int region;
 	int action;
-} Message_struct_clipboard;
+} Message_struct;
 
 int clipboard_connect(char * clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
