@@ -63,9 +63,9 @@ void ctrl_c_callback_handler(int signum){
  * Socket Functions
  ***********************/
 
-int connect_unix() {
+void connect_unix() {
 	// Create socket unix
-	int sock_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
+	sock_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
 	if(sock_fd_unix == -1) {
 		perror("socket unix");
 		exit(-1);
@@ -89,13 +89,11 @@ int connect_unix() {
 	}
 
 	printf("Local socket initiated\n");
-
-	return sock_fd_unix;
 }
 
 // Connects to socket responsable with down connections on tree
-int connect_inet(int portDown) {
-	int sock_fd_inet = socket(AF_INET, SOCK_STREAM|SOCK_NONBLOCK, 0);
+void connect_inet(int portDown) {
+	sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_fd_inet == -1) {
 		perror("socket inet");
 		exit(-1);
@@ -111,14 +109,16 @@ int connect_inet(int portDown) {
 	}
 	printf("Socket created and binded\n");
 
-	listen(sock_fd_inet, 2);
+	if(listen(sock_fd_inet, 2) == -1) {
+		perror("listen)");
+		exit(-1);
+	}
 
 	printf("Ready to accept connections\n");
-	return sock_fd_inet;
 }
 
-int connect_inetIP(int port, char ip[]) {
-	int sock_fd_inetIP = socket(AF_INET, SOCK_STREAM, 0);
+void connect_inetIP(int port, char ip[]) {
+	sock_fd_inetIP = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_fd_inetIP == -1) {
 		perror("socket");
 		exit(-1);
@@ -140,8 +140,6 @@ int connect_inetIP(int port, char ip[]) {
 			exit(-1);
 	}
 	printf("Online socket initiated\n");
-
-	return sock_fd_inetIP;
 }
 
 
@@ -232,19 +230,24 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 			write(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
 		} 
 	}
+	printf("backupPaste complete\n");
 
 	return 1;
 }
 
 
-int backupCopy(Message_struct messageClipboard, int clipboard_client) {
+int backupCopy() {
+	Message_struct messageClipboard;
 	messageClipboard.action = BACKUP;
-	int statusBackup = write(sock_fd_inet, &messageClipboard, sizeof(Message_struct));
+
+printf("backupCopy sock_fd_inetIP %d\n", sock_fd_inetIP);
+
+	int statusBackup = write(sock_fd_inetIP, &messageClipboard, sizeof(Message_struct));
 	if(statusBackup == 0) {
 		printf("cannot acess backup\n");
 	}
 
-	if(read(sock_fd_inet, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
+	if(read(sock_fd_inetIP, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 		perror("Commucation");
 	}
 
@@ -261,7 +264,7 @@ int backupCopy(Message_struct messageClipboard, int clipboard_client) {
 
 			// Store the size of the clipboard region
 			clipboard.size[i] = messageClipboard.size[i];
-			int numberOfBytesBackup = read(sock_fd_inet, data, clipboard.size[i]);
+			int numberOfBytesBackup = read(sock_fd_inetIP, data, clipboard.size[i]);
 			if(numberOfBytesBackup != clipboard.size[i]) {
 				printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, (int ) clipboard.size[i]);
 				break;
@@ -271,8 +274,7 @@ int backupCopy(Message_struct messageClipboard, int clipboard_client) {
 		}
 	}
 
-	// Informs that the backup is complete
-	backupSignal = 1;
+	printf("backupCopy complete\n");
 
 	return 1;
 }
@@ -336,14 +338,16 @@ void * clipboardThread(void * arg) {
 	Message_struct messageClipboard;
 
 	// Update the info between clipboards
-	printf("       clipboardThread\n");
 	while(killSignal == 0) {
+		printf(".       clipboardThread\n");
 		int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct));
+
+printf("message received    %d   clipboardThread - bytes %d\n", messageClipboard.action, numberOfBytesReceived);
+
 		if(numberOfBytesReceived == 0) {
 			printf("Clipboard disconected\n");
 			break;
 		}
-
 		if(messageClipboard.action == BACKUP) {
 			printf("BACKUP\n");
 			if( backupPaste(messageClipboard, clipboard_client) == 0) {
@@ -404,6 +408,7 @@ void * downThread(void * arg) {
 	size_addr = sizeof(struct sockaddr);
 	
 	while(killSignal == 0) {
+		printf(". downThread\n");
 		int clipboard_client = accept(client, (struct sockaddr *) &clientClipboard_addr, &size_addr);
 		if(clipboard_client != -1) {
 			printf("Accepted connection from other clipboard - down\n");
@@ -415,7 +420,7 @@ void * downThread(void * arg) {
 			}
 
 			threadInfo->inputArgument = clipboard_client;
-
+			printf("threadInfo->inputArgument %d\n", threadInfo->inputArgument);
 			// Creates new thread to handle the comunicatuion with the client
 			pthread_create(&threadInfo->thread_id, NULL, &clipboardThread, threadInfo);
 			printf("Thread created clipboard - ID %lu\n",  threadInfo->thread_id);
@@ -436,20 +441,17 @@ void * upThread(void *arg) {
 
 	Message_struct messageClipboard;
 
-	// Ask for the backup
-	backupCopy(messageClipboard, clipboardClient);
-
 	
+
 	while(killSignal == 0) {
 
-		printf(". upThread\n");
 		
 
 	}
 
 	close(clipboardClient);
 	free(threadInfo);
-	printf("GoodBye - downThread\n");	
+	printf("GoodBye - upThread\n");	
 }
 
 
@@ -497,23 +499,12 @@ int main(int argc, char const *argv[])
 	// Creates port to comunnicate with clipboards down on the tree
 	srand(getpid());   // seeds the port number on the pid of the process
 	int portDown = rand()%(64738-1024) + 1024; 
+
 	// Informs the user of what is the port to connect
 	printf("Port to acess machine: %d\n", portDown);
 
 
 unlink(SOCKET_ADDR);
-
-	// Creates the unix socket to communicate with local apps
-	sock_fd_unix = connect_unix();
-
-	// Create socket inet
-	// To communicate with down stages 
-	sock_fd_inet = connect_inet(portDown);
-
-	// To communicate with upper stages 
-	if(modeOfFunction == ONLINE) {
-		sock_fd_inetIP = connect_inetIP(portUp, ip);
-	}
 
 	// Init the clipboard struct
 	for (int i = 0; i < 10; i++)
@@ -522,12 +513,23 @@ unlink(SOCKET_ADDR);
 		clipboard.size[i] = 0;
 	}
 
+	// Creates the unix socket to communicate with local apps
+	connect_unix();
+
+	// Create socket inet
+	// To communicate with down stages 
+	connect_inet(portDown);
+
 	thread_info_struct *threadInfo = NULL;
 	
 	// Creates a thread to comunnicate with clipboard up on the tree
 	if(modeOfFunction == ONLINE) {
-		
-		backupSignal = 0;
+		connect_inetIP(portUp, ip);
+
+		// Receives the backup from the other clipboard
+		backupCopy();
+
+		printf("Received backup\n");
 
 		threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
 		if(threadInfo == NULL) {
@@ -537,11 +539,10 @@ unlink(SOCKET_ADDR);
 
 		threadInfo->inputArgument = sock_fd_inetIP;
 		pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
-		printf("Thread created to handle clipboards down on the tree - ID %lu\n",  threadInfo->thread_id);
+		printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
 	}
 
-	// Waits that the backup is done
-	while(backupSignal == 0);
+	printf("signal 1\n");
 
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
@@ -558,7 +559,7 @@ unlink(SOCKET_ADDR);
 	printf("Ready to accept clients\n");
 
 	while(1){
-		printf(".\n");
+		printf(". main\n");
 
 		// Reset hold variable
 		socklen_t size_addr = sizeof(struct sockaddr);
