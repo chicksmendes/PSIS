@@ -13,8 +13,7 @@
 
 // Clipboard data
 clipboard_struct clipboard;
-// New data received
-char *data = NULL;
+
 
 // Socket structs
 // UNIX
@@ -150,10 +149,54 @@ void connect_inetIP(int port, char ip[]) {
  * Clipboard Functions
  ***********************/
 
+int writeAll(int sock_fd, char *buf, int len) {
+	// Number of bytes sent
+	int total = 0;
+	// Number of bytes left to send
+    int bytesleft = len;
+    int sentBytes;
+
+    while(total < len) {
+        sentBytes = write(sock_fd, buf+total, bytesleft);
+        if (sentBytes == -1) { 
+        	break; 
+        }
+        total += sentBytes;
+        bytesleft -= sentBytes;
+    }
+
+    // Returns -1 if cannot send information, returns total bytes sent otherwise
+    return sentBytes == -1?-1:total; 
+}
+
+int readAll(int sock_fd, char *buf, int len) {
+	// Number of bytes received
+	int total = 0;
+	// Number of bytes left to receive
+    int bytesleft = len;
+    int receiveBytes;
+
+    while(total < len) {
+        receiveBytes = read(sock_fd, buf+total, bytesleft);
+        if (receiveBytes == -1) { 
+        	break; 
+        }
+        total += receiveBytes;
+        bytesleft -= receiveBytes;
+    }
+
+    // Returns -1 if cannot receive information, returns total bytes receive otherwise
+    return receiveBytes == -1?-1:total; 
+}
+
+
 int copy(Message_struct messageReceived, int client) {
 	
 	int error = 0;
 	int success = 1;
+
+	// New data received
+	char *data = NULL;
 
 	// Allocs memory to store new data
 	data = (char *)malloc(sizeof(char)*messageReceived.size[messageReceived.region]);
@@ -169,7 +212,10 @@ int copy(Message_struct messageReceived, int client) {
 	write(client, &success, sizeof(int));
 
 	// Receives the data from the client
-	int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
+	//int numberOfBytesCopied = re
+	int numberOfBytesCopied = readAll(client, data, clipboard.size[messageReceived.region]);
+
+	//int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
 
 	// Erases old data
 	if(clipboard.clipboard[messageReceived.region] != NULL) {
@@ -206,7 +252,8 @@ int paste(Message_struct messageReceived, int client) {
 		write(client, &messageSend, sizeof(Message_struct));
 
 		// Sends the data to the client
-		int numberOfBytesPaste = write(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
+		int numberOfBytesPaste = writeAll(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
+		//int numberOfBytesPaste = write(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
 		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard.clipboard[messageSend.region]);
 	}
 
@@ -240,6 +287,7 @@ int backupCopy() {
 	Message_struct messageClipboard;
 	messageClipboard.action = BACKUP;
 
+
 printf("backupCopy sock_fd_inetIP %d\n", sock_fd_inetIP);
 
 	int statusBackup = write(sock_fd_inetIP, &messageClipboard, sizeof(Message_struct));
@@ -255,6 +303,8 @@ printf("backupCopy sock_fd_inetIP %d\n", sock_fd_inetIP);
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		if(messageClipboard.size[i] != 0) {
+			// New data received
+			char *data = NULL;
 			printf("region %d ", i);
 			data = (char *)malloc(sizeof(char)*messageClipboard.size[i]);
 			if(data == NULL) {
@@ -341,8 +391,6 @@ void * clipboardThread(void * arg) {
 	while(killSignal == 0) {
 		printf(".       clipboardThread\n");
 		int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct));
-
-printf("message received    %d   clipboardThread - bytes %d\n", messageClipboard.action, numberOfBytesReceived);
 
 		if(numberOfBytesReceived == 0) {
 			printf("Clipboard disconected\n");
@@ -541,8 +589,6 @@ unlink(SOCKET_ADDR);
 		pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
 		printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
 	}
-
-	printf("signal 1\n");
 
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
