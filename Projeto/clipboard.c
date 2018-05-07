@@ -45,6 +45,7 @@ void ctrl_c_callback_handler(int signum){
 	struct flock fl;
 	printf("aught signal Ctr-C\n");
 
+	// É uma região critia - A TRATAR!!!!
 	killSignal = 1;
 
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
@@ -72,23 +73,32 @@ void queuePush(int region) {
 
 	if(messageQueueLast == NULL) {
 		messageQueue = newMessageQueue;
-		messageQueueLast = messageQueue
+		messageQueueLast = messageQueue;
 	}
 	else {
 		messageQueueLast->next = newMessageQueue;
 		messageQueueLast = newMessageQueue;
 	}
-
 }
 
+
+// Returns the region that should be updated or -1 in case there's nothing to do
 int queuePop() {
-	int region = messageQueue->region;
-	messageQueueStruct *aux = messageQueue;
-	messageQueue = messageQueue->next;
-	free(aux);
-	return region;
-
+	int region;
+	
+	if(messageQueue != NULL) {
+		region = messageQueue->region;
+		messageQueueStruct *aux = messageQueue;
+		messageQueue = messageQueue->next;
+		free(aux);
+		if(messageQueue == NULL) {
+			messageQueueLast = NULL;
+		}
+		return region;
+	}
+	return -1;
 }
+
 
 
 /***********************
@@ -260,6 +270,9 @@ int copy(Message_struct messageReceived, int client) {
 	clipboard.clipboard[messageReceived.region] = data;
 
 	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
+
+	// Sends the update to the upThread
+	queuePush(messageReceived.region);
 
 	return 1;
 }
@@ -434,9 +447,12 @@ void * clipboardThread(void * arg) {
 			if( backupPaste(messageClipboard, clipboard_client) == 0) {
 				printf("Error on backup\n");
 			}
-
-			
-			
+		}
+		else if(messageClipboard.action == PASTE) {
+			printf("PASTE\n");
+			if( copy(messageClipboard, clipboard_client) == 0) {
+				printf("Error on copy\n");
+			}
 		}
 		/*else if(messageClipboard.action == COPY) {
 			//printf("Received information - action: COPY\n");
@@ -522,12 +538,19 @@ void * upThread(void *arg) {
 
 	Message_struct messageClipboard;
 
-	
+	int region = -1;
 
 	while(killSignal == 0) {
+		if((region = queuePop()) != -1) {
+			// Updates the upper clipboards with the new info
+			messageClipboard.region = region;
+			messageClipboard.action = PASTE;
+			messageClipboard.size[region] = clipboard.size[region];
 
-		
-
+			if(paste(messageClipboard, clipboardClient) == -1) {
+				perror("paste");
+			}
+		}
 	}
 
 	close(clipboardClient);

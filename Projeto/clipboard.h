@@ -22,8 +22,6 @@
 typedef struct _clipboard {
 	char *clipboard[NUMBEROFPOSITIONS];
 	size_t size[NUMBEROFPOSITIONS];
-	bool update;
-	int newInfo[];
 } clipboard_struct;
 
 typedef struct _message {
@@ -34,7 +32,7 @@ typedef struct _message {
 
 typedef struct _messageQueueStruct
 {
-	_messageQueueStruct *next;
+	struct _messageQueueStruct *next;
 	int region;
 } messageQueueStruct;
 
