@@ -6,6 +6,52 @@
 
 #include "clipboard.h"
 
+
+
+int writeAll(int sock_fd, char *buf, int len) {
+	// Number of bytes sent
+	int total = 0;
+	// Number of bytes left to send
+    int bytesleft = len;
+    int sentBytes;
+
+    while(total < len) {
+        sentBytes = write(sock_fd, buf+total, bytesleft);
+        if (sentBytes == -1) { 
+        	break; 
+        }
+        total += sentBytes;
+        bytesleft -= sentBytes;
+    }
+
+    // Returns -1 if cannot send information, returns total bytes sent otherwise
+    return sentBytes == -1?-1:total; 
+}
+
+int readAll(int sock_fd, char *buf, int len) {
+	// Number of bytes received
+	int total = 0;
+	// Number of bytes left to receive
+    int bytesleft = len;
+    int receiveBytes;
+
+    while(total < len) {
+        receiveBytes = read(sock_fd, buf+total, bytesleft);
+        if (receiveBytes == -1) { 
+        	break; 
+        }
+        total += receiveBytes;
+        bytesleft -= receiveBytes;
+    }
+
+    // Returns -1 if cannot receive information, returns total bytes receive otherwise
+    return receiveBytes == -1?-1:total; 
+}
+
+
+
+
+
 int clipboard_connect(char * clipboard_dir){
 	char socketName[100];
 
@@ -63,7 +109,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 
 	if(status == 1) {
 		// Sends the data to the clipboard
-		numberOfBytesSent =  write(clipboard_id, buf, count*sizeof(char));
+		numberOfBytesSent =  writeAll(clipboard_id, buf, count*sizeof(char));
 
 		// Tests if all the information was sent
 		if(numberOfBytesSent != count*sizeof(char)) {
@@ -106,7 +152,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 		read(clipboard_id, &message, sizeof(Message_struct));
 
 		// Reads the data from the clipboard
-		numberOfBytesReceived = read(clipboard_id, buf, message.size[message.region]*sizeof(char));
+		numberOfBytesReceived = readAll(clipboard_id, buf, message.size[message.region]*sizeof(char));
 
 		//printf("Received %d bytes - data: %s\n", numberOfBytesReceived, (char *) buf);
 	}

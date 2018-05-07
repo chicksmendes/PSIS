@@ -36,6 +36,9 @@ int killSignal = 0;
 // Backup Signal
 int backupSignal = 1;
 
+messageQueueStruct *messageQueue = NULL;
+messageQueueStruct *messageQueueLast = NULL;
+
 
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
@@ -55,7 +58,37 @@ void ctrl_c_callback_handler(int signum){
 }
 
 
+/**************************
+ * messageQueue Functions
+ **************************/
+void queuePush(int region) {
+	messageQueueStruct *newMessageQueue = (messageQueueStruct *)malloc(sizeof(messageQueueStruct));
+	if(newMessageQueue == NULL) {
+		exit(-1);
+	}
 
+	newMessageQueue->region = region;
+	newMessageQueue->next = NULL;
+
+	if(messageQueueLast == NULL) {
+		messageQueue = newMessageQueue;
+		messageQueueLast = messageQueue
+	}
+	else {
+		messageQueueLast->next = newMessageQueue;
+		messageQueueLast = newMessageQueue;
+	}
+
+}
+
+int queuePop() {
+	int region = messageQueue->region;
+	messageQueueStruct *aux = messageQueue;
+	messageQueue = messageQueue->next;
+	free(aux);
+	return region;
+
+}
 
 
 /***********************
@@ -274,7 +307,7 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 		if(messageClipboard.size[i] != 0) {
 			printf("region %d ", i);
 			printf("clipboard content %s size %d\n", clipboard.clipboard[i], (int ) clipboard.size[i]);
-			write(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
+			int numberOfBytesSent = writeAll(clipboard_client, clipboard.clipboard[i], clipboard.size[i]);
 		} 
 	}
 	printf("backupPaste complete\n");
@@ -314,7 +347,7 @@ printf("backupCopy sock_fd_inetIP %d\n", sock_fd_inetIP);
 
 			// Store the size of the clipboard region
 			clipboard.size[i] = messageClipboard.size[i];
-			int numberOfBytesBackup = read(sock_fd_inetIP, data, clipboard.size[i]);
+			int numberOfBytesBackup = readAll(sock_fd_inetIP, data, clipboard.size[i]);
 			if(numberOfBytesBackup != clipboard.size[i]) {
 				printf("Number of bytes received backup is Incorrect. Received %d and it should be %d\n", numberOfBytesBackup, (int ) clipboard.size[i]);
 				break;

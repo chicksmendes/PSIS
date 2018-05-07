@@ -18,6 +18,7 @@
 #include <pthread.h>
 #include <stdbool.h>
 
+
 typedef struct _clipboard {
 	char *clipboard[NUMBEROFPOSITIONS];
 	size_t size[NUMBEROFPOSITIONS];
@@ -30,6 +31,12 @@ typedef struct _message {
 	int region;
 	int action;
 } Message_struct;
+
+typedef struct _messageQueueStruct
+{
+	_messageQueueStruct *next;
+	int region;
+} messageQueueStruct;
 
 typedef struct _thread_info_struct {
 	pthread_t thread_id; 
