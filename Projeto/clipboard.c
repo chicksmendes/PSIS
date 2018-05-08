@@ -37,8 +37,10 @@ int killSignal = 0;
 // Backup Signal
 int backupSignal = 1;
 
+// Updates messages
 messageQueueStruct *messageQueue = NULL;
 messageQueueStruct *messageQueueLast = NULL;
+
 
 
 thread_info_struct *clipboardThreadList = NULL;
@@ -599,7 +601,7 @@ printf(". upThread\n");
 
 	close(clipboardClient);
 	free(threadInfo);
-	printf("GoodBye - transmissionThread\n");	
+	printf("GoodBye - upThread\n");	
 }
 
 // Thread respnsable to transmit information to the others Clipboards
@@ -612,8 +614,8 @@ void * transmissionThread(void *arg) {
 	int region = -1;
 
 	while(killSignal == 0) {
-//printf("transmissionThread\n");
 		if((region = queuePop()) != -1) {
+printf("transmissionThread - transmit\n");
 			// Updates the upper clipboards with the new info
 			messageClipboard.region = region;
 			messageClipboard.action = COPY;
@@ -645,7 +647,6 @@ void * transmissionThread(void *arg) {
 				// Next clipboard connected
 				sendThreads = sendThreads->next;
 			}
-
 		}
 	}
 
