@@ -90,7 +90,7 @@ int clipboard_connect(char * clipboard_dir){
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 	Message_struct message;
 	int numberOfBytesSent = 0;
-	int status = 0;
+	int status = 1;
 
 	if(region > NUMBEROFPOSITIONS) {
 		return 0;
@@ -103,9 +103,6 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 
 	// Informs the server of the action that the client wants to take - COPY
 	write(clipboard_id, &message, sizeof(Message_struct));
-
-	// Reads if the server is ready for it to continue
-	read(clipboard_id, &status, sizeof(int));
 
 	if(status == 1) {
 		// Sends the data to the clipboard

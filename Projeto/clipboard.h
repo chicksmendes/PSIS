@@ -30,8 +30,7 @@ typedef struct _message {
 	int action;
 } Message_struct;
 
-typedef struct _messageQueueStruct
-{
+typedef struct _messageQueueStruct {
 	struct _messageQueueStruct *next;
 	int region;
 } messageQueueStruct;
@@ -39,6 +38,7 @@ typedef struct _messageQueueStruct
 typedef struct _thread_info_struct {
 	pthread_t thread_id; 
 	int inputArgument;
+	struct _thread_info_struct *next;
 } thread_info_struct;
 
 int clipboard_connect(char * clipboard_dir);
