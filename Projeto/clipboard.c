@@ -37,10 +37,6 @@ int killSignal = 0;
 // Backup Signal
 int backupSignal = 1;
 
-// Updates messages
-messageQueueStruct *messageQueue = NULL;
-messageQueueStruct *messageQueueLast = NULL;
-
 // List of active clipboard threads
 thread_info_struct *clipboardThreadList = NULL;
 
@@ -110,50 +106,6 @@ void createPipe() {
 	}
 }
 
-/**************************
- * messageQueue Functions
- **************************/
-void queuePush(int region, int source) {
-	messageQueueStruct *newMessageQueue = (messageQueueStruct *)malloc(sizeof(messageQueueStruct));
-	if(newMessageQueue == NULL) {
-		exit(-1);
-	}
-
-	newMessageQueue->region = region;
-	newMessageQueue->source = source;
-	newMessageQueue->next = NULL;
-
-	if(messageQueueLast == NULL) {
-		messageQueue = newMessageQueue;
-		messageQueueLast = messageQueue;
-	}
-	else {
-		messageQueueLast->next = newMessageQueue;
-		messageQueueLast = newMessageQueue;
-	}
-}
-
-
-// Returns the region that should be updated or -1 in case there's nothing to do
-int queuePop(int *source) {
-	int region;
-	
-	if(messageQueue != NULL) {
-		region = messageQueue->region;
-		*source = messageQueue->source;
-		messageQueueStruct *aux = messageQueue;
-		messageQueue = messageQueue->next;
-		free(aux);
-		if(messageQueue == NULL) {
-			messageQueueLast = NULL;
-		}
-		return region;
-	}
-	return -1;
-}
-
-
-
 /***********************
  * Socket Functions
  ***********************/
@@ -183,7 +135,7 @@ void connect_unix() {
 		exit(-1);
 	}
 
-	printf("Local socket initiated\n");
+	//printf("Local socket initiated\n");
 }
 
 // Connects to socket responsable with down connections on tree
@@ -202,14 +154,14 @@ void connect_inet(int portDown) {
 		perror("bind");
 		exit(-1);
 	}
-	printf("Socket created and binded\n");
+	//printf("Socket created and binded\n");
 
 	if(listen(sock_fd_inet, 2) == -1) {
 		perror("listen)");
 		exit(-1);
 	}
 
-	printf("Ready to accept connections\n");
+	//printf("Ready to accept connections\n");
 }
 
 void connect_inetIP(int port, char ip[]) {
@@ -223,18 +175,11 @@ void connect_inetIP(int port, char ip[]) {
 	upperClipboard_addr.sin_port= htons(port);
 	inet_aton(ip, &upperClipboard_addr.sin_addr);
 
-	// Bind
-	/*int err_inet = bind(sock_fd_inet, (struct sockaddr *) &local_addr, sizeof(local_addr));
-	if(err_inet == -1) {
-		perror("bind");
-		exit(-1);
-	}*/
-
 	if( -1 == connect(sock_fd_inetIP, (const struct sockaddr *) &upperClipboard_addr, sizeof(struct sockaddr_in))) {
 			printf("Error connecting to backup server\n");
 			exit(-1);
 	}
-	printf("Online socket initiated\n");
+	//printf("Online socket initiated\n");
 }
 
 
@@ -322,17 +267,15 @@ int copy(Message_struct messageReceived, int client) {
 	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
 
 	// Sends the update to the transmissionThread
-	if(modeOfFunction == ONLINE) {
-		updateMessage update;
-		update.region = messageReceived.region;
-		update.source = DOWN;
-		if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
-			perror("pipe write");
-			exit(-1);
-		}
-		printf("Write to pipe %d %d\n", update.region, update.source);
-		//queuePush(messageReceived.region, DOWN);
+	updateMessage update;
+	update.region = messageReceived.region;
+	update.source = DOWN;
+	if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
+		perror("pipe write");
+		exit(-1);
 	}
+	printf("Write to pipe %d %d\n", update.region, update.source);
+
 
 	return 1;
 }
@@ -392,9 +335,6 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 int backupCopy() {
 	Message_struct messageClipboard;
 	messageClipboard.action = BACKUP;
-
-
-printf("backupCopy sock_fd_inetIP %d\n", sock_fd_inetIP);
 
 	int statusBackup = write(sock_fd_inetIP, &messageClipboard, sizeof(Message_struct));
 	if(statusBackup == 0) {
@@ -627,7 +567,6 @@ printf(". upThread\n");
 			}
 
 			printf("Write to pipe %d %d\n", update.region, update.source);
-			//queuePush(messageClipboard.region, UP);
 		}
 	}
 
@@ -636,8 +575,8 @@ printf(". upThread\n");
 
 	// If the connection to the upper clipboard is lost, start to work like a local clipboard
 	modeOfFunction = LOCAL;
-
-	printf("GoodBye - upThread\n");	
+	printf("Mode of function - LOCAL\n");	
+	printf("GoodBye - upThread\n");
 }
 
 // Thread respnsable to transmit information to the others Clipboards
@@ -650,18 +589,17 @@ void * transmissionThread(void *arg) {
 	updateMessage update;
 
 	while(killSignal == 0) {
-		//if((region = queuePop(&source)) != -1) {
-printf("transmissionThread - transmit\n");
+//printf("transmissionThread - transmit\n");
 		if(read(pipeThread[0], &update, sizeof(updateMessage)) == sizeof(updateMessage)) {
 
-		printf("READ to pipe %d %d\n", update.region, update.source);
+			printf("read from pipe %d %d\n", update.region, update.source);
 			// Updates the upper clipboards with the new info
 			messageClipboard.region = update.region;
 			messageClipboard.action = COPY;
 			messageClipboard.size[update.region] = clipboard.size[update.region];
 
 			if(modeOfFunction = ONLINE && update.source == DOWN) {
-				printf("transmissionThread - online e baixo\n");
+				//printf("transmissionThread - online e baixo\n");
 				if(write(clipboardClient, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 					perror("transmissionThread - up");
 					break;
@@ -674,7 +612,7 @@ printf("transmissionThread - transmit\n");
 			// Update the down clipboards with the new info
 			thread_info_struct *sendThreads = clipboardThreadList;
 			while(sendThreads != NULL) {
-				printf("transmissionThread - baixo\n");
+				//printf("transmissionThread - baixo\n");
 				if(write(sendThreads->inputArgument, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 					perror("transmissionThread - down");
 					break;
@@ -782,7 +720,7 @@ unlink(SOCKET_ADDR);
 
 		threadInfo->inputArgument = sock_fd_inetIP;
 		pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
-		printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
+		//printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
 	}
 
 	// Creates pipe for inter thread communication
@@ -796,7 +734,7 @@ unlink(SOCKET_ADDR);
 
 	threadInfo->inputArgument = sock_fd_inetIP;
 	pthread_create(&threadInfo->thread_id, NULL, &transmissionThread, threadInfo);
-	printf("Thread created to transmit information to other clipboards - ID %lu\n",  threadInfo->thread_id);
+	//printf("Thread created to transmit information to other clipboards - ID %lu\n",  threadInfo->thread_id);
 
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
@@ -807,13 +745,13 @@ unlink(SOCKET_ADDR);
 
 	threadInfo->inputArgument = sock_fd_inet;
 	pthread_create(&threadInfo->thread_id, NULL, &downThread, threadInfo);
-	printf("Thread created to handle clipboards down on the tree - ID %lu\n",  threadInfo->thread_id);
+	//printf("Thread created to handle clipboards down on the tree - ID %lu\n",  threadInfo->thread_id);
 
 
 	printf("Ready to accept clients\n");
 
 	while(1){
-printf(". main\n");
+//printf(". main\n");
 
 		// Reset hold variable
 		socklen_t size_addr = sizeof(struct sockaddr);
