@@ -41,9 +41,11 @@ int backupSignal = 1;
 messageQueueStruct *messageQueue = NULL;
 messageQueueStruct *messageQueueLast = NULL;
 
-
-
+// List of active clipboard threads
 thread_info_struct *clipboardThreadList = NULL;
+
+// pipe for inter thread communication
+int pipeThread[2];
 
 
 // Unlinks the sockets when the program stops
@@ -96,6 +98,16 @@ void clipboardThreadListRemove(pthread_t thread_id) {
 	IMPLEMENTAR O RETIRAR DAS THREADS
 	**********************/
 	
+}
+
+/**************************
+ * pipe Functions
+ **************************/
+void createPipe() {
+	if(pipe(pipeThread) != 0) {
+		perror("pipe");
+		exit(-1);
+	}
 }
 
 /**************************
@@ -311,7 +323,15 @@ int copy(Message_struct messageReceived, int client) {
 
 	// Sends the update to the transmissionThread
 	if(modeOfFunction == ONLINE) {
-		queuePush(messageReceived.region, DOWN);
+		updateMessage update;
+		update.region = messageReceived.region;
+		update.source = DOWN;
+		if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
+			perror("pipe write");
+			exit(-1);
+		}
+		printf("Write to pipe %d %d\n", update.region, update.source);
+		//queuePush(messageReceived.region, DOWN);
 	}
 
 	return 1;
@@ -599,8 +619,17 @@ printf(". upThread\n");
 
 			printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
 
+			updateMessage update;
+			update.region = messageClipboard.region;
+			update.source = DOWN;
 			// Transmit the information to the transmission thread to update lower clients
-			queuePush(messageClipboard.region, UP);
+			if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
+				perror("pipe write");
+				exit(-1);
+			}
+
+		printf("Write to pipe %d %d\n", update.region, update.source);
+			//queuePush(messageClipboard.region, UP);
 		}
 	}
 
@@ -616,25 +645,27 @@ void * transmissionThread(void *arg) {
 
 	Message_struct messageClipboard;
 
-	int region = -1;
-	int source = -1;
+	updateMessage update;
 
 	while(killSignal == 0) {
-		if((region = queuePop(&source)) != -1) {
+		//if((region = queuePop(&source)) != -1) {
 printf("transmissionThread - transmit\n");
-			// Updates the upper clipboards with the new info
-			messageClipboard.region = region;
-			messageClipboard.action = COPY;
-			messageClipboard.size[region] = clipboard.size[region];
+		if(read(pipeThread[0], &update, sizeof(updateMessage)) == sizeof(updateMessage)) {
 
-			if(modeOfFunction = ONLINE && source == DOWN) {
+		printf("READ to pipe %d %d\n", update.region, update.source);
+			// Updates the upper clipboards with the new info
+			messageClipboard.region = update.region;
+			messageClipboard.action = COPY;
+			messageClipboard.size[update.region] = clipboard.size[update.region];
+
+			if(modeOfFunction = ONLINE && update.source == DOWN) {
 				printf("transmissionThread - online e baixo\n");
 				if(write(clipboardClient, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 					perror("transmissionThread - up");
 					break;
 				}
 				else {
-					writeAll(clipboardClient, clipboard.clipboard[messageClipboard.region], messageClipboard.size[region]);
+					writeAll(clipboardClient, clipboard.clipboard[messageClipboard.region], messageClipboard.size[messageClipboard.region]);
 				}
 			}
 
@@ -647,7 +678,7 @@ printf("transmissionThread - transmit\n");
 					break;
 				}
 
-				if(writeAll(sendThreads->inputArgument, clipboard.clipboard[region], clipboard.size[region]) != clipboard.size[region]) {
+				if(writeAll(sendThreads->inputArgument, clipboard.clipboard[messageClipboard.region], clipboard.size[messageClipboard.region]) != clipboard.size[messageClipboard.region]) {
 					perror("transmissionThread - down");
 					break;
 				}
@@ -655,6 +686,10 @@ printf("transmissionThread - transmit\n");
 				// Next clipboard connected
 				sendThreads = sendThreads->next;
 			}
+		}
+		else {
+			perror("pipe read");
+			exit(-1);
 		}
 	}
 
@@ -747,6 +782,9 @@ unlink(SOCKET_ADDR);
 		pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
 		printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
 	}
+
+	// Creates pipe for inter thread communication
+	createPipe();
 
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
 	if(threadInfo == NULL) {

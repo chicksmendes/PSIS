@@ -44,6 +44,11 @@ typedef struct _thread_info_struct {
 	struct _thread_info_struct *next;
 } thread_info_struct;
 
+typedef struct _updateMessage {
+	int region;
+	int source;
+} updateMessage;
+
 int clipboard_connect(char * clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
