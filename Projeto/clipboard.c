@@ -575,8 +575,6 @@ void * upThread(void *arg) {
 
 	Message_struct messageClipboard;
 
-	int region = -1;
-
 	while(killSignal == 0) {
 printf(". upThread\n");
 		// Reads the message send by the upper Clipboards
@@ -621,20 +619,24 @@ printf(". upThread\n");
 
 			updateMessage update;
 			update.region = messageClipboard.region;
-			update.source = DOWN;
+			update.source = UP;
 			// Transmit the information to the transmission thread to update lower clients
 			if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
 				perror("pipe write");
 				exit(-1);
 			}
 
-		printf("Write to pipe %d %d\n", update.region, update.source);
+			printf("Write to pipe %d %d\n", update.region, update.source);
 			//queuePush(messageClipboard.region, UP);
 		}
 	}
 
 	close(clipboardClient);
 	free(threadInfo);
+
+	// If the connection to the upper clipboard is lost, start to work like a local clipboard
+	modeOfFunction = LOCAL;
+
 	printf("GoodBye - upThread\n");	
 }
 
