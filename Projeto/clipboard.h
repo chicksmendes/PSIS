@@ -6,6 +6,8 @@
 #define NUMBEROFPOSITIONS 10
 #define SOCKET_ADDR "./CLIPBOARD_SOCKET"
 #define ONLINE_FLAG "-c"
+#define UP 0
+#define DOWN 1
 
 #define LOCAL 0
 #define ONLINE 1
@@ -32,6 +34,7 @@ typedef struct _message {
 
 typedef struct _messageQueueStruct {
 	struct _messageQueueStruct *next;
+	int source;
 	int region;
 } messageQueueStruct;
 

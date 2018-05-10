@@ -101,13 +101,14 @@ void clipboardThreadListRemove(pthread_t thread_id) {
 /**************************
  * messageQueue Functions
  **************************/
-void queuePush(int region) {
+void queuePush(int region, int source) {
 	messageQueueStruct *newMessageQueue = (messageQueueStruct *)malloc(sizeof(messageQueueStruct));
 	if(newMessageQueue == NULL) {
 		exit(-1);
 	}
 
 	newMessageQueue->region = region;
+	newMessageQueue->source = source;
 	newMessageQueue->next = NULL;
 
 	if(messageQueueLast == NULL) {
@@ -122,11 +123,12 @@ void queuePush(int region) {
 
 
 // Returns the region that should be updated or -1 in case there's nothing to do
-int queuePop() {
+int queuePop(int *source) {
 	int region;
 	
 	if(messageQueue != NULL) {
 		region = messageQueue->region;
+		*source = messageQueue->source;
 		messageQueueStruct *aux = messageQueue;
 		messageQueue = messageQueue->next;
 		free(aux);
@@ -309,7 +311,7 @@ int copy(Message_struct messageReceived, int client) {
 
 	// Sends the update to the transmissionThread
 	if(modeOfFunction == ONLINE) {
-		queuePush(messageReceived.region);
+		queuePush(messageReceived.region, DOWN);
 	}
 
 	return 1;
@@ -596,6 +598,9 @@ printf(". upThread\n");
 			clipboard.clipboard[messageClipboard.region] = data;
 
 			printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
+
+			// Transmit the information to the transmission thread to update lower clients
+			queuePush(messageClipboard.region, UP);
 		}
 	}
 
@@ -612,16 +617,18 @@ void * transmissionThread(void *arg) {
 	Message_struct messageClipboard;
 
 	int region = -1;
+	int source = -1;
 
 	while(killSignal == 0) {
-		if((region = queuePop()) != -1) {
+		if((region = queuePop(&source)) != -1) {
 printf("transmissionThread - transmit\n");
 			// Updates the upper clipboards with the new info
 			messageClipboard.region = region;
 			messageClipboard.action = COPY;
 			messageClipboard.size[region] = clipboard.size[region];
 
-			if(modeOfFunction = ONLINE) {
+			if(modeOfFunction = ONLINE && source == DOWN) {
+				printf("transmissionThread - online e baixo\n");
 				if(write(clipboardClient, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 					perror("transmissionThread - up");
 					break;
@@ -634,6 +641,7 @@ printf("transmissionThread - transmit\n");
 			// Update the down clipboards with the new info
 			thread_info_struct *sendThreads = clipboardThreadList;
 			while(sendThreads != NULL) {
+				printf("transmissionThread - baixo\n");
 				if(write(sendThreads->inputArgument, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 					perror("transmissionThread - down");
 					break;
