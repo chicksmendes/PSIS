@@ -46,9 +46,8 @@ int pipeThread[2];
 
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
-	struct flock fl;
 	printf("aught signal Ctr-C\n");
-
+	// Closes the sockets
 	close(sock_fd_inet);
 
 	close(sock_fd_inetIP);
@@ -56,14 +55,13 @@ void ctrl_c_callback_handler(int signum){
 	close(sock_fd_unix);
 	// É uma região critia - A TRATAR!!!!
 	killSignal = 1;
-
+	// Clears the clipboard
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		free(clipboard.clipboard[i]);
 	}
-	printf("free clipboard\n");
+	
 	unlink(SOCKET_ADDR);
-	close(sock_fd_inet);
 	exit(0);
 }
 
@@ -109,7 +107,9 @@ void createPipe() {
 /***********************
  * Socket Functions
  ***********************/
-
+/**
+ * @brief      Connects an unix socket.
+ */
 void connect_unix() {
 	// Create socket unix
 	sock_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -189,7 +189,16 @@ void connect_inetIP(int port, char ip[]) {
 /***********************
  * Clipboard Functions
  ***********************/
-
+/**
+ * @brief      Attemps to write a buffer and if the write fails,
+ *             writes again the rest of the buffer 
+ *
+ * @param[in]  sock_fd  The file descriptor of the socket
+ * @param      buf      The buffer
+ * @param[in]  len      The length of the buffer
+ *
+ * @return     Returns the number of bytes writen or -1 in case of fail
+ */
 int writeAll(int sock_fd, char *buf, int len) {
 	// Number of bytes sent
 	int total = 0;
@@ -210,6 +219,16 @@ int writeAll(int sock_fd, char *buf, int len) {
     return sentBytes == -1?-1:total; 
 }
 
+/**
+ * @brief      Attemps to read a buffer and if the read fails,
+ *             writes again the rest of the buffer 
+ *
+ * @param[in]  sock_fd  The file descriptor of the socket
+ * @param      buf      The buffer
+ * @param[in]  len      The length of the buffer
+ *
+ * @return     Returns the number of bytes read or -1 in case of fail
+ */
 int readAll(int sock_fd, char *buf, int len) {
 	// Number of bytes received
 	int total = 0;

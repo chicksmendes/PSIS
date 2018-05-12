@@ -7,7 +7,16 @@
 #include "clipboard.h"
 
 
-
+/**
+ * @brief      Attemps to write a buffer and if the write fails,
+ *             writes again the rest of the buffer 
+ *
+ * @param[in]  sock_fd  The file descriptor of the socket
+ * @param      buf      The buffer
+ * @param[in]  len      The length of the buffer
+ *
+ * @return     Returns the number of bytes writen or -1 in case of fail
+ */
 int writeAll(int sock_fd, char *buf, int len) {
 	// Number of bytes sent
 	int total = 0;
@@ -28,6 +37,16 @@ int writeAll(int sock_fd, char *buf, int len) {
     return sentBytes == -1?-1:total; 
 }
 
+/**
+ * @brief      Attemps to read a buffer and if the read fails,
+ *             writes again the rest of the buffer 
+ *
+ * @param[in]  sock_fd  The file descriptor of the socket
+ * @param      buf      The buffer
+ * @param[in]  len      The length of the buffer
+ *
+ * @return     Returns the number of bytes read or -1 in case of fail
+ */
 int readAll(int sock_fd, char *buf, int len) {
 	// Number of bytes received
 	int total = 0;
@@ -51,7 +70,13 @@ int readAll(int sock_fd, char *buf, int len) {
 
 
 
-
+/**
+ * @brief      { function_description }
+ *
+ * @param      clipboard_dir  The clipboard dir
+ *
+ * @return     { description_of_the_return_value }
+ */
 int clipboard_connect(char * clipboard_dir){
 	char socketName[100];
 
@@ -87,6 +112,16 @@ int clipboard_connect(char * clipboard_dir){
 	return sock_fd;
 }
 
+/**
+ * @brief      Copies the buffer to a determinated region on the clipboard
+ *
+ * @param[in]  clipboard_id  The file descriptor to the socket
+ * @param[in]  region        The region on the buffer will be copied
+ * @param      buf           The buffer
+ * @param[in]  count         The size of the information
+ *
+ * @return     In case of success returns the number of bytes copied or -1 in case of fail
+ */
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 	Message_struct message;
 	int numberOfBytesSent = 0;
