@@ -136,7 +136,6 @@ void connect_unix() {
 
 	//printf("Local socket initiated\n");
 }
-
 // Connects to socket responsable with down connections on tree
 void connect_inet(int portDown) {
 	sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
@@ -292,46 +291,83 @@ int copy(Message_struct messageReceived, int client) {
 		perror("pipe write");
 		exit(-1);
 	}
-	printf("Write to pipe %d %d\n", update.region, update.source);
+	//printf("Write to pipe %d %d\n", update.region, update.source);
 
 
 	return 1;
 }
+
+/* Critical Region
+			char *buff = (char*)malloc(clipboard.size[messageClipboard.region]);
+			if(buff == NULL) {
+				perror("malloc");
+				exit(-1);
+			}
+			int size = clipboard.size[messageClipboard.region];
+			memcpy(buff, clipboard.clipboard[messageClipboard.region], size);
+			*/
 
 int paste(Message_struct messageReceived, int client) {
 	
 	int error = 0;
 	int success = 1;
-
-
 	Message_struct messageSend;
-	if(messageReceived.size[messageReceived.region] < clipboard.size[messageReceived.region]) {
-		write(client, &error, sizeof(int));
+
+	//REGIAO CRITICA
+	int size = clipboard.size[messageReceived.region];
+	//
+
+	if(messageReceived.size[messageReceived.region] < size) {
+		if(write(client, &error, sizeof(int)) != sizeof(int)) {
+			perror("paste");
+			exit(-1);
+		}
 	}
 	else {
-		write(client, &success, sizeof(int));
+		if(write(client, &success, sizeof(int)) != sizeof(int)) {
+			perror("paste");
+			exit(-1);
+		}
 
 		// Loads the structure with the information to the client
 		messageSend.action = PASTE;
-		messageSend.size[messageReceived.region] = clipboard.size[messageReceived.region];
+		messageSend.size[messageReceived.region] = size;
 		messageSend.region = messageReceived.region;
 
 		write(client, &messageSend, sizeof(Message_struct));
 
+		char *buff = (char*)malloc(size);
+		if(buff == NULL) {
+			perror("malloc");
+			exit(-1);
+		}
+		//	REGIAO CRITICA
+		memcpy(buff, clipboard.clipboard[messageSend.region], size);
+		//
+
+		printf("transmissionThread - buffer %s\n", buff);
+
 		// Sends the data to the client
-		int numberOfBytesPaste = writeAll(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
-		//int numberOfBytesPaste = write(client, clipboard.clipboard[messageSend.region], clipboard.size[messageReceived.region]);
-		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, clipboard.clipboard[messageSend.region]);
+		int numberOfBytesPaste = writeAll(client, buff, size);
+		if(numberOfBytesPaste != size) {
+			perror("paste");
+			exit(-1);
+		}
+		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, buff);
 	}
 
 	return 1;
 }
 
+
 int backupPaste(Message_struct messageClipboard, int clipboard_client) {
+
+	//REGIAO CRITICA 
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		messageClipboard.size[i] = clipboard.size[i];
 	}
+	//
 
 	// Sends the amount of data present in the clipboard
 	write(clipboard_client, &messageClipboard, sizeof(Message_struct));
@@ -339,9 +375,20 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		if(messageClipboard.size[i] != 0) {
+			char *buff = (char*)malloc(messageClipboard.size[i]);
+			if(buff == NULL) {
+				perror("malloc");
+				exit(-1);
+			}
+			//REGIAO CRITICA
+			memcpy(buff, clipboard.clipboard[i], messageClipboard.size[i]);
+			//
+
+			printf("transmissionThread - buffer %s\n", buff);
+
 			printf("region %d ", i);
 			printf("clipboard content %s size %d\n", clipboard.clipboard[i], (int ) clipboard.size[i]);
-			if(writeAll(clipboard_client, clipboard.clipboard[i], clipboard.size[i]) != clipboard.size[i]) {
+			if(writeAll(clipboard_client, buff, messageClipboard.size[i]) != messageClipboard.size[i]) {
 				perror("backup paste");
 				exit(-1);
 			}
@@ -558,14 +605,15 @@ printf(". upThread\n");
 			}
 
 			// Store the size of the clipboard region
-			clipboard.size[messageClipboard.region] = messageClipboard.size[messageClipboard.region];
+			int size = messageClipboard.size[messageClipboard.region];
 
 			// Receives the data from the client
 			//int numberOfBytesCopied = re
-			int numberOfBytesCopied = readAll(clipboardClient, data, clipboard.size[messageClipboard.region]);
+			int numberOfBytesCopied = readAll(clipboardClient, data, size);
 
 			//int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
 
+			// REGIAO CRÍTICA
 			// Erases old data
 			if(clipboard.clipboard[messageClipboard.region] != NULL) {
 				printf("Region cleared\n");
@@ -574,6 +622,8 @@ printf(". upThread\n");
 
 			// Assigns new data to the clipboard
 			clipboard.clipboard[messageClipboard.region] = data;
+			clipboard.size[messageClipboard.region] = size;
+			//
 
 			printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
 
@@ -612,17 +662,18 @@ void * transmissionThread(void *arg) {
 //printf("transmissionThread - transmit\n");
 		if(read(pipeThread[0], &update, sizeof(updateMessage)) == sizeof(updateMessage)) {
 
-			printf("read from pipe %d %d\n", update.region, update.source);
+			//printf("read from pipe %d %d\n", update.region, update.source);
 
 			// Critical Region
-			if(char * buff = (char *)malloc(clipboard.size[messageClipboard.region]) == NULL) {
+			char *buff = (char*)malloc(clipboard.size[update.region]);
+			if(buff == NULL) {
 				perror("malloc");
 				exit(-1);
 			}
-			int size = clipboard.size[messageClipboard.region];
-			memcpy(buff, clipboard.clipboard[messageClipboard.region], size);
+			int size = clipboard.size[update.region];
+			memcpy(buff, clipboard.clipboard[update.region], size);
 			//
-			
+
 			// Updates the upper clipboards with the new info
 			messageClipboard.region = update.region;
 			messageClipboard.action = COPY;
