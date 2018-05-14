@@ -69,6 +69,8 @@ void ctrl_c_callback_handler(int signum){
 /***************************************
  * clipboardThreadList Functions
  ***************************************/
+
+
 void clipboardThreadListAdd(thread_info_struct *new) {
 	if(clipboardThreadList == NULL) {
 		new->next = NULL;
