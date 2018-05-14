@@ -37,8 +37,8 @@ int killSignal = 0;
 // List of active clipboard threads
 thread_info_struct *clipboardThreadList = NULL;
 
-// POSIX Mutexes
-pthread_mutex_t muxClipboard;
+// POSIX RW LOCK
+pthread_rwlock_t rwlockClipboard;
 
 // pipe for inter thread communication
 int pipeThread[2];
@@ -277,8 +277,8 @@ int copy(Message_struct messageReceived, int client) {
 	//int numberOfBytesCopied = re
 	int numberOfBytesCopied = readAll(client, data, size);
 
-	// REGIAO CRITICA 
-	pthread_mutex_lock(&muxClipboard);
+	// Critical Region - Write
+	pthread_rwlock_wrlock(&rwlockClipboard);
 	// Erases old data
 	if(clipboard.clipboard[messageReceived.region] != NULL) {
 		printf("Region cleared\n");
@@ -288,9 +288,9 @@ int copy(Message_struct messageReceived, int client) {
 	// Assigns new data to the clipboard
 	clipboard.size[messageReceived.region] = size;
 	clipboard.clipboard[messageReceived.region] = data;
-	pthread_mutex_unlock(&muxClipboard);
-
 	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
+	pthread_rwlock_unlock(&rwlockClipboard);
+
 
 	// Sends the update to the transmissionThread
 	updateMessage update;
@@ -313,10 +313,10 @@ int paste(Message_struct messageReceived, int client) {
 	int success = 1;
 	Message_struct messageSend;
 
-	//REGIAO CRITICA
-	pthread_mutex_lock(&muxClipboard);
+	// Critical Region - Read
+	pthread_rwlock_rdlock(&rwlockClipboard);
 	int size = clipboard.size[messageReceived.region];
-	pthread_mutex_unlock(&muxClipboard);
+	pthread_rwlock_unlock(&rwlockClipboard);
 
 	if(messageReceived.size[messageReceived.region] < size) {
 		if(write(client, &error, sizeof(int)) != sizeof(int)) {
@@ -342,10 +342,10 @@ int paste(Message_struct messageReceived, int client) {
 			perror("malloc");
 			exit(-1);
 		}
-		//	REGIAO CRITICA
-		pthread_mutex_lock(&muxClipboard);
+		// Critical Region - Read
+		pthread_rwlock_rdlock(&rwlockClipboard);
 		memcpy(buff, clipboard.clipboard[messageSend.region], size);
-		pthread_mutex_unlock(&muxClipboard);
+		pthread_rwlock_unlock(&rwlockClipboard);
 
 		printf("transmissionThread - buffer %s\n", buff);
 
@@ -364,12 +364,12 @@ int paste(Message_struct messageReceived, int client) {
 
 int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 
-	//REGIAO CRITICA 
-	pthread_mutex_lock(&muxClipboard);
+	// Critical Region - Read
+	pthread_rwlock_rdlock(&rwlockClipboard);
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i) {
 		messageClipboard.size[i] = clipboard.size[i];
 	}
-	pthread_mutex_unlock(&muxClipboard);
+	pthread_rwlock_unlock(&rwlockClipboard);
 
 	// Sends the amount of data present in the clipboard
 	write(clipboard_client, &messageClipboard, sizeof(Message_struct));
@@ -382,10 +382,10 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 				perror("malloc");
 				exit(-1);
 			}
-			//REGIAO CRITICA
-			pthread_mutex_lock(&muxClipboard);
+			// Critical Region - Read
+			pthread_rwlock_rdlock(&rwlockClipboard);
 			memcpy(buff, clipboard.clipboard[i], messageClipboard.size[i]);
-			pthread_mutex_unlock(&muxClipboard);
+			pthread_rwlock_unlock(&rwlockClipboard);
 
 			printf("transmissionThread - buffer %s\n", buff);
 
@@ -616,8 +616,8 @@ printf(". upThread\n");
 
 			//int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
 
-			// REGIAO CRÍTICA
-			pthread_mutex_lock(&muxClipboard);
+			// Critical Region - Write
+			pthread_rwlock_wrlock(&rwlockClipboard);
 			// Erases old data
 			if(clipboard.clipboard[messageClipboard.region] != NULL) {
 				printf("Region cleared\n");
@@ -627,7 +627,7 @@ printf(". upThread\n");
 			// Assigns new data to the clipboard
 			clipboard.clipboard[messageClipboard.region] = data;
 			clipboard.size[messageClipboard.region] = size;
-			pthread_mutex_unlock(&muxClipboard);
+			pthread_rwlock_unlock(&rwlockClipboard);
 
 			printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
 
@@ -668,8 +668,8 @@ void * transmissionThread(void *arg) {
 
 			//printf("read from pipe %d %d\n", update.region, update.source);
 
-			// Critical Region
-			pthread_mutex_lock(&muxClipboard);
+			// Critical Region - Read
+			pthread_rwlock_rdlock(&rwlockClipboard);
 			char *buff = (char*)malloc(clipboard.size[update.region]);
 			if(buff == NULL) {
 				perror("malloc");
@@ -677,7 +677,7 @@ void * transmissionThread(void *arg) {
 			}
 			int size = clipboard.size[update.region];
 			memcpy(buff, clipboard.clipboard[update.region], size);
-			pthread_mutex_unlock(&muxClipboard);
+			pthread_rwlock_unlock(&rwlockClipboard);
 
 			// Updates the upper clipboards with the new info
 			messageClipboard.region = update.region;
@@ -818,9 +818,9 @@ unlink(SOCKET_ADDR);
 	// Creates pipe for inter thread communication
 	createPipe();
 
-	// Init thr clipboard mutex
-	if(pthread_mutex_init(&muxClipboard, NULL) != 0) {
-		perror("Init Mutex");
+	// Init the clipboard rwlock for the Clipboard
+	if(pthread_rwlock_init(&rwlockClipboard, NULL) != 0) {
+		perror("rw_lock");
 		exit(-1);
 	}
 
