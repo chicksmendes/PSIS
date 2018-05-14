@@ -127,7 +127,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 	int numberOfBytesSent = 0;
 	int status = 1;
 
-	if(region > NUMBEROFPOSITIONS) {
+	if(region > NUMBEROFPOSITIONS-1 || region < 0) {
 		return 0;
 	}
 
