@@ -1,5 +1,4 @@
-#define INBOUND_FIFO "INBOUND_FIFO"
-#define OUTBOUND_FIFO "OUTBOUND_FIFO"
+#define UPDATE_FIFO "UPDATE_FIFO"
 #define BACKUP 2
 #define PASTE 1
 #define COPY 0
