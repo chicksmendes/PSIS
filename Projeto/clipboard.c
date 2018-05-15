@@ -302,7 +302,6 @@ int copy(Message_struct messageReceived, int client) {
 	}
 	//printf("Write to pipe %d %d\n", update.region, update.source);
 
-
 	return 1;
 }
 
@@ -458,7 +457,6 @@ int backupCopy() {
 void * clientThread(void * arg) {
 	thread_info_struct *threadInfo = arg;
 	int client = threadInfo->inputArgument;
-	printf("Thread %lu Client %d\n", threadInfo->thread_id, threadInfo->inputArgument);
 	int receivedBytes;
 
 	Message_struct messageReceived;
@@ -856,7 +854,6 @@ unlink(SOCKET_ADDR);
 
 		// Accept client to communicate
 		int client =  accept(sock_fd_unix, (struct sockaddr *) &client_addr_un, &size_addr);
-		printf("client %d\n", client);
 		if(client == -1) {
 			perror("accept");
 			exit(-1);
