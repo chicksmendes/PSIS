@@ -34,11 +34,19 @@ int sock_fd_inetIP;
 // Kill singnal
 int killSignal = 0;
 
+// sock fd of the upper socket
+int upperClipboard; 
+
 // List of active clipboard threads
 thread_info_struct *clipboardThreadList = NULL;
 
 // POSIX RW LOCK
 pthread_rwlock_t rwlockClipboard;
+pthread_rwlock_t rwlockModeOfFunction;
+pthread_rwlock_t rwlockThreadList;
+
+// POSIX MUTEX
+pthread_mutex_t sendMutex;
 
 // pipe for inter thread communication
 int pipeThread[2];
@@ -68,15 +76,13 @@ void ctrl_c_callback_handler(int signum){
 
 
 
-
-
-
 /***************************************
  * clipboardThreadList Functions
  ***************************************/
 
 
 void clipboardThreadListAdd(thread_info_struct *new) {
+	pthread_rwlock_wrlock(&rwlockThreadList);
 	if(clipboardThreadList == NULL) {
 		new->next = NULL;
 		clipboardThreadList = new;
@@ -85,20 +91,34 @@ void clipboardThreadListAdd(thread_info_struct *new) {
 		new->next = clipboardThreadList;
 		clipboardThreadList = new;
 	}
+	pthread_rwlock_unlock(&rwlockThreadList);
 }
 
 void clipboardThreadListRemove(pthread_t thread_id) {
+	pthread_rwlock_wrlock(&rwlockThreadList);
 	thread_info_struct *aux = clipboardThreadList;
+	thread_info_struct *aux2 = NULL;
 	while(aux != NULL) {
 		if(aux->thread_id == thread_id) {
-			break;
+			// Beggining of the list
+			if(aux->thread_id == clipboardThreadList->thread_id) {
+				clipboardThreadList = clipboardThreadList->next;
+				break;
+			}
+			// End of the list
+			else if(aux->next == NULL) {
+				aux2->next = NULL;
+				break;
+			}
+			// Midle of the list
+			aux2->next = aux->next;
+			break; 
 		}
+		aux2 = aux;
 		aux = aux->next;
 	}
-	/*****************
-	IMPLEMENTAR O RETIRAR DAS THREADS
-	**********************/
-	
+	free(aux);
+	pthread_rwlock_unlock(&rwlockThreadList);
 }
 
 /**************************
@@ -270,37 +290,45 @@ int copy(Message_struct messageReceived, int client) {
 		perror("malloc");
 		exit(-1);
 	}
-	// Store the size of the clipboard region
-	int size = messageReceived.size[messageReceived.region];
 
 	// Receives the data from the client
-	//int numberOfBytesCopied = re
-	int numberOfBytesCopied = readAll(client, data, size);
-
-	// Critical Region - Write
-	pthread_rwlock_wrlock(&rwlockClipboard);
-	// Erases old data
-	if(clipboard.clipboard[messageReceived.region] != NULL) {
-		printf("Region cleared\n");
-		free(clipboard.clipboard[messageReceived.region]);
+	if(readAll(client, data, messageReceived.size[messageReceived.region]) != messageReceived.size[messageReceived.region]) {
+		perror("copy");
+		return -1;
 	}
 
-	// Assigns new data to the clipboard
-	clipboard.size[messageReceived.region] = size;
-	clipboard.clipboard[messageReceived.region] = data;
-	printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageReceived.region]);
-	pthread_rwlock_unlock(&rwlockClipboard);
+	// Locks the write to the socket/pipe so only can write at once
+	pthread_mutex_lock(&sendMutex);
+	// Sends the update to the upper clipboard
+	pthread_rwlock_rdlock(&rwlockModeOfFunction);
+	if(modeOfFunction == ONLINE) {
+		if(write(sock_fd_inetIP, &messageReceived, sizeof(Message_struct)) != sizeof(Message_struct)) {
+			perror("copy");
+			return -1;
+		}
 
-
-	// Sends the update to the transmissionThread
-	updateMessage update;
-	update.region = messageReceived.region;
-	update.source = DOWN;
-	if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
-		perror("pipe write");
-		exit(-1);
+		if(writeAll(sock_fd_inetIP, data, messageReceived.size[messageReceived.region]) != messageReceived.size[messageReceived.region]) {
+			perror("copy");
+			return -1;
+		}
 	}
-	//printf("Write to pipe %d %d\n", update.region, update.source);
+	// Sends the update to the upper thread trow the pipe
+	else if(modeOfFunction == LOCAL) {
+		if(write(pipeThread[1], &messageReceived, sizeof(Message_struct)) != sizeof(Message_struct)) {
+			perror("copy");
+			return -1;
+		}
+
+		if(writeAll(pipeThread[1], data, messageReceived.size[messageReceived.region]) != messageReceived.size[messageReceived.region]) {
+			perror("copy");
+			return -1;
+		}
+	}
+	pthread_rwlock_unlock(&rwlockModeOfFunction);
+	pthread_mutex_unlock(&sendMutex);
+
+	// Clears the memory allocated to receive the message
+	free(data);
 
 	return 1;
 }
@@ -521,12 +549,6 @@ printf(".       clipboardThread - action %d\n", messageClipboard.action);
 				printf("Error on backup\n");
 			}
 		}
-		/*else if(messageClipboard.action == PASTE) {
-			printf("PASTE\n");
-			if(paste(messageClipboard, clipboard_client) == 0) {
-				printf("Error on copy\n");
-			}
-		}*/
 		else if(messageClipboard.action == COPY) {
 			printf("\nCOPY\n");
 			if(copy(messageClipboard, clipboard_client) == 0) {
@@ -536,7 +558,7 @@ printf(".       clipboardThread - action %d\n", messageClipboard.action);
 	}
 	close(clipboard_client);
 	// Free the struct attach to the thread
-	free(threadInfo);
+	clipboardThreadListRemove(threadInfo->thread_id);
 	printf("GoodBye - clipboardThread\n");
 }
 
@@ -583,13 +605,36 @@ void * upThread(void *arg) {
 
 	Message_struct messageClipboard;
 
+	int receivedBytes = 0;
+
 	while(killSignal == 0) {
 printf(". upThread\n");
-		// Reads the message send by the upper Clipboards
-		if(read(clipboardClient, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
-			perror("upThread");
-			break;
+
+		if(modeOfFunction == ONLINE) {
+			// Reads the message send by the upper Clipboards
+			receivedBytes = read(clipboardClient, &messageClipboard, sizeof(Message_struct));
+			// If client sends EOF, terminates connection
+			if(receivedBytes == 0) {
+				// Critical Region - Write
+				pthread_rwlock_wrlock(&rwlockModeOfFunction);
+				modeOfFunction = LOCAL;
+				pthread_rwlock_unlock(&rwlockModeOfFunction);
+				printf("Changed to LOCAL MODE\n");
+				continue;
+			}
+			if(receivedBytes != sizeof(Message_struct)) {
+				perror("upThread");
+				return NULL;
+			}
 		}
+		else if(modeOfFunction == LOCAL) {
+			// Reads the message send by the upper Clipboards
+			if(read(pipeThread[0], &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
+				perror("upThread");
+				return NULL;
+			}
+		}
+
 
 		if(messageClipboard.action == COPY) {
 			//int error = 0;
@@ -609,10 +654,30 @@ printf(". upThread\n");
 			int size = messageClipboard.size[messageClipboard.region];
 
 			// Receives the data from the client
-			//int numberOfBytesCopied = re
-			int numberOfBytesCopied = readAll(clipboardClient, data, size);
-
-			//int numberOfBytesCopied = read(client, data, clipboard.size[messageReceived.region]);
+			if(modeOfFunction == ONLINE) {
+				// Reads the message send by the upper Clipboards
+				receivedBytes = readAll(clipboardClient, data, size);
+				// If client sends EOF, terminates connection
+				if(receivedBytes == 0) {
+					// Critical Region - Write
+					pthread_rwlock_wrlock(&rwlockModeOfFunction);
+					modeOfFunction = LOCAL;
+					pthread_rwlock_unlock(&rwlockModeOfFunction);
+					printf("Changed to LOCAL MODE\n");
+					continue;
+				}
+				if(receivedBytes != size) {
+					perror("upThread");
+					return NULL;
+				}
+			}
+			else if(modeOfFunction == LOCAL) {
+				// Reads the message send by the upper Clipboards
+				if(readAll(pipeThread[0],  data, size) != size) {
+					perror("upThread");
+					return NULL;
+				}
+			}
 
 			// Critical Region - Write
 			pthread_rwlock_wrlock(&rwlockClipboard);
@@ -627,110 +692,38 @@ printf(". upThread\n");
 			clipboard.size[messageClipboard.region] = size;
 			pthread_rwlock_unlock(&rwlockClipboard);
 
-			printf("Received %d bytes - data: %s\n", numberOfBytesCopied, clipboard.clipboard[messageClipboard.region]);
+			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
 
-			updateMessage update;
-			update.region = messageClipboard.region;
-			update.source = UP;
-			// Transmit the information to the transmission thread to update lower clients
-			if(write(pipeThread[1], &update, sizeof(updateMessage)) != sizeof(updateMessage)) {
-				perror("pipe write");
-				exit(-1);
+			// Sends the new info to the down clipboards
+			pthread_rwlock_rdlock(&rwlockThreadList);
+			thread_info_struct *sendThreads = clipboardThreadList;
+
+			// Run all the clipboards and send the new information to them
+			while(sendThreads != NULL) {
+				if(write(sendThreads->inputArgument, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
+					perror("upThread - paste");
+					return NULL;
+				}
+				// Critical Region - Write
+				pthread_rwlock_rdlock(&rwlockClipboard);
+				if(writeAll(sendThreads->inputArgument, data, size) != size) {
+					perror("upThread - paste");
+					return NULL;
+				}
+				pthread_rwlock_unlock(&rwlockClipboard);
+
+				// Passes to the next clipboard
+				sendThreads = sendThreads->next;
 			}
-
-			printf("Write to pipe %d %d\n", update.region, update.source);
+			pthread_rwlock_unlock(&rwlockThreadList);
 		}
 	}
 
 	close(clipboardClient);
 	free(threadInfo);
 
-	// If the connection to the upper clipboard is lost, start to work like a local clipboard
-	modeOfFunction = LOCAL;
-	printf("Mode of function - LOCAL\n");	
 	printf("GoodBye - upThread\n");
 }
-
-// Thread respnsable to transmit information to the others Clipboards
-void * transmissionThread(void *arg) {
-	thread_info_struct *threadInfo = arg;
-	int clipboardClient = threadInfo->inputArgument;
-
-	Message_struct messageClipboard;
-
-	updateMessage update;
-
-	while(killSignal == 0) {
-//printf("transmissionThread - transmit\n");
-		if(read(pipeThread[0], &update, sizeof(updateMessage)) == sizeof(updateMessage)) {
-
-			//printf("read from pipe %d %d\n", update.region, update.source);
-
-			// Critical Region - Read
-			pthread_rwlock_rdlock(&rwlockClipboard);
-			char *buff = (char*)malloc(clipboard.size[update.region]);
-			if(buff == NULL) {
-				perror("malloc");
-				exit(-1);
-			}
-			int size = clipboard.size[update.region];
-			memcpy(buff, clipboard.clipboard[update.region], size);
-			pthread_rwlock_unlock(&rwlockClipboard);
-
-			// Updates the upper clipboards with the new info
-			messageClipboard.region = update.region;
-			messageClipboard.action = COPY;
-			messageClipboard.size[update.region] = size;
-			
-			if(modeOfFunction == ONLINE && update.source == DOWN) {
-				//printf("transmissionThread - online e baixo\n");
-				if(write(clipboardClient, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
-					perror("transmissionThread - up");
-					exit(-1);
-				}
-				else {
-					writeAll(clipboardClient, buff, size);
-				}
-			}
-
-			else if((modeOfFunction == ONLINE && update.source == UP) || (modeOfFunction == LOCAL && update.source == DOWN)) {
-				// Update the down clipboards with the new info
-				thread_info_struct *sendThreads = clipboardThreadList;
-
-				// Run all the clipboards and send the new information to them
-				while(sendThreads != NULL) {
-					//printf("transmissionThread - baixo\n");
-					if(write(sendThreads->inputArgument, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
-						perror("transmissionThread - down");
-						exit(-1);
-					}
-					
-					if(writeAll(sendThreads->inputArgument, buff, size) != size) {
-						perror("transmissionThread - down");
-						exit(-1);
-					}
-
-					// Next clipboard connected
-					sendThreads = sendThreads->next;
-				}				
-			}
-
-			free(buff);
-		}
-		else {
-			perror("pipe read");
-			exit(-1);
-		}
-	}
-
-	close(clipboardClient);
-	free(threadInfo);
-	printf("GoodBye - transmissionThread\n");	
-}
-
-
-
-
 
 
 int main(int argc, char const *argv[])
@@ -801,25 +794,6 @@ unlink(SOCKET_ADDR);
 		backupCopy();
 
 		printf("Received backup\n");
-
-		threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
-		if(threadInfo == NULL) {
-			perror("malloc");
-			exit(0);
-		}
-
-		threadInfo->inputArgument = sock_fd_inetIP;
-		pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
-		//printf("Thread created to handle clipboards up on the tree - ID %lu\n",  threadInfo->thread_id);
-	}
-
-	// Creates pipe for inter thread communication
-	createPipe();
-
-	// Init the clipboard rwlock for the Clipboard
-	if(pthread_rwlock_init(&rwlockClipboard, NULL) != 0) {
-		perror("rw_lock");
-		exit(-1);
 	}
 
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
@@ -829,8 +803,35 @@ unlink(SOCKET_ADDR);
 	}
 
 	threadInfo->inputArgument = sock_fd_inetIP;
-	pthread_create(&threadInfo->thread_id, NULL, &transmissionThread, threadInfo);
-	//printf("Thread created to transmit information to other clipboards - ID %lu\n",  threadInfo->thread_id);
+	pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
+
+	// Creates pipe for inter thread communication
+	createPipe();
+
+
+	// Init the clipboard rwlock for the Clipboard
+	if(pthread_rwlock_init(&rwlockClipboard, NULL) != 0) {
+		perror("rw_lock");
+		exit(-1);
+	}
+
+	// Init the clipboard rwlock for the mode of function
+	if(pthread_rwlock_init(&rwlockModeOfFunction, NULL) != 0) {
+		perror("rw_lock");
+		exit(-1);
+	}
+
+	// Init the clipboard rwlock for the Thread List
+	if(pthread_rwlock_init(&rwlockThreadList, NULL) != 0) {
+		perror("rw_lock");
+		exit(-1);
+	}
+
+	// Init the clipboard rwlock for the Clipboard
+	if(pthread_mutex_init(&sendMutex, NULL) != 0) {
+		perror("rw_lock");
+		exit(-1);
+	}
 
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
