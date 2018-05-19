@@ -159,6 +159,8 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 
 	return numberOfBytesSent;
 }
+
+
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 	Message_struct message;
 	int numberOfBytesReceived = 0;
@@ -192,4 +194,31 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 		return 0;
 	}
 	return numberOfBytesReceived;
+}
+
+int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) { 
+	Message_struct message;
+	int size = 0;
+
+	if(region > NUMBEROFPOSITIONS) {
+		printf("Wait region out of bounds\n");
+		return 0;
+	}
+
+	// Loads the stuct with the information
+	message.region = region;
+	message.size[message.region] = (size_t) count;
+	message.action = WAIT;
+
+	// Informs the server of the action that the client wants to take - PASTE
+	write(clipboard_id, &message, sizeof(Message_struct));
+
+	printf("Waiting for the new information\n");
+
+	read(clipboard_id, &size, sizeof(size_t));
+
+	int receivedBytes = readAll(clipboard_id, buf, size);
+	if(receivedBytes)
+
+	return receivedBytes;
 }

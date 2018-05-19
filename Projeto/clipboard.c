@@ -48,6 +48,9 @@ pthread_rwlock_t rwlockThreadList;
 // POSIX MUTEX
 pthread_mutex_t sendMutex;
 
+// POSIX CONDITIONAL VARIABLE
+pthread_cond_t condClipboard[NUMBEROFPOSITIONS];
+
 // pipe for inter thread communication
 int pipeThread[2];
 
@@ -161,9 +164,8 @@ void connect_unix() {
 		perror("listen");
 		exit(-1);
 	}
-
-	//printf("Local socket initiated\n");
 }
+
 // Connects to socket responsable with down connections on tree
 void connect_inet(int portDown) {
 	sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
@@ -180,14 +182,11 @@ void connect_inet(int portDown) {
 		perror("bind");
 		exit(-1);
 	}
-	//printf("Socket created and binded\n");
 
 	if(listen(sock_fd_inet, 2) == -1) {
 		perror("listen)");
 		exit(-1);
 	}
-
-	//printf("Ready to accept connections\n");
 }
 
 void connect_inetIP(int port, char ip[]) {
@@ -205,7 +204,6 @@ void connect_inetIP(int port, char ip[]) {
 			printf("Error connecting to backup server\n");
 			exit(-1);
 	}
-	//printf("Online socket initiated\n");
 }
 
 
@@ -374,7 +372,6 @@ int paste(Message_struct messageReceived, int client) {
 		memcpy(buff, clipboard.clipboard[messageSend.region], size);
 		pthread_rwlock_unlock(&rwlockClipboard);
 
-		printf("transmissionThread - buffer %s\n", buff);
 
 		// Sends the data to the client
 		int numberOfBytesPaste = writeAll(client, buff, size);
@@ -383,7 +380,51 @@ int paste(Message_struct messageReceived, int client) {
 			exit(-1);
 		}
 		printf("Sent %d bytes - data: %s\n", numberOfBytesPaste, buff);
+
+		free(buff);
 	}
+
+	return 1;
+}
+
+int wait(Message_struct messageReceived, int client) {
+
+	int size = 0;
+	Message_struct messageSend;
+
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+	pthread_mutex_lock(&mutex);
+
+	pthread_cond_wait(&condClipboard[messageReceived.region], &mutex);
+
+	pthread_mutex_unlock(&mutex);
+
+	pthread_rwlock_rdlock(&rwlockClipboard);
+	if(clipboard.size[messageReceived.region] > messageReceived.size[messageReceived.region]) {
+		write(client, &messageReceived.size[messageReceived.region], sizeof(size_t));
+		size = messageReceived.size[messageReceived.region];
+	}
+	else {
+		write(client, &clipboard.size[messageReceived.region], sizeof(size_t));
+		size = clipboard.size[messageReceived.region];
+	}
+	pthread_rwlock_unlock(&rwlockClipboard);	
+
+	char *buff = (char *)malloc(size);
+	if(buff == NULL) {
+		perror("wait");
+		exit(-1);
+	}
+	pthread_rwlock_wrlock(&rwlockClipboard);
+	memcpy(buff, clipboard.clipboard[messageReceived.region], size);
+	pthread_rwlock_unlock(&rwlockClipboard);
+	
+	if(writeAll(client, buff, size) != size) {
+		perror("wait");
+	}	
+
+	pthread_mutex_destroy(&mutex);
 
 	return 1;
 }
@@ -414,14 +455,12 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 			memcpy(buff, clipboard.clipboard[i], messageClipboard.size[i]);
 			pthread_rwlock_unlock(&rwlockClipboard);
 
-			printf("transmissionThread - buffer %s\n", buff);
-
-			printf("region %d ", i);
-			printf("clipboard content %s size %d\n", clipboard.clipboard[i], (int ) clipboard.size[i]);
 			if(writeAll(clipboard_client, buff, messageClipboard.size[i]) != messageClipboard.size[i]) {
 				perror("backup paste");
 				exit(-1);
 			}
+
+			free(buff);
 		} 
 	}
 	printf("backupPaste complete\n");
@@ -485,83 +524,42 @@ int backupCopy() {
 void * clientThread(void * arg) {
 	thread_info_struct *threadInfo = arg;
 	int client = threadInfo->inputArgument;
-	int receivedBytes;
 
-	Message_struct messageReceived;
-	printf("Client Thread\n");
-	while(killSignal == 0){
-printf(". clientThread\n");
-		// Reads the inbood message from the client
-		receivedBytes = read(client, &messageReceived, sizeof(Message_struct));
+	Message_struct message;
 
-		// If client sends EOF, terminates connection
-		if(receivedBytes == 0) {
+	// Update the info between clipboards
+	while(killSignal == 0) {		
+		int numberOfBytesReceived = read(client, &message, sizeof(Message_struct));
+		if(numberOfBytesReceived == 0) {
+			printf("Clipboard disconected\n");
 			break;
 		}
-
-		//printf("Client Thread - message receive\n");
-		if(messageReceived.action == COPY) {
-			printf("\nCOPY\n");
-			if(copy(messageReceived, client) == 0) {
-				printf("Error on copy\n");
-				break;
+		if(message.action == BACKUP) {
+			if(backupPaste(message, client) == 0) {
+				printf("Error on backup\n");
 			}
 		}
-		else if(messageReceived.action == PASTE) {
-			//printf("Received information - action: PASTE\n");
-			printf("\nPASTE\n");
-
-			if(paste(messageReceived, client) == 0) {
+		else if(message.action == COPY) {
+			if(copy(message, client) == 0) {
+				printf("Error on copy\n");
+			}
+		}
+		else if(message.action == PASTE) {
+			if(paste(message, client) == 0) {
 				printf("Error on pasting\n");
-				break;
+			}
+		}
+		else if(message.action == WAIT) {
+			if(wait(message, client) == 0) {
+				printf("Error on wait\n");
 			}
 		}
 	}
 	close(client);
 	// Free the struct attach to the thread
-	free(threadInfo);
+	clipboardThreadListRemove(threadInfo->thread_id);
 	printf("GoodBye - clientThread\n");
 }
-
-
-// Thread responsable to communicate with down Clipboards
-void * clipboardThread(void * arg) {
-	thread_info_struct *threadInfo = arg;
-	int clipboard_client = threadInfo->inputArgument;
-
-	Message_struct messageClipboard;
-
-	// Update the info between clipboards
-	while(killSignal == 0) {
-printf(".       clipboardThread\n");
-		
-		int numberOfBytesReceived = read(clipboard_client, &messageClipboard, sizeof(Message_struct));
-
-printf(".       clipboardThread - action %d\n", messageClipboard.action);
-		
-		if(numberOfBytesReceived == 0) {
-			printf("Clipboard disconected\n");
-			break;
-		}
-		if(messageClipboard.action == BACKUP) {
-			printf("BACKUP\n");
-			if(backupPaste(messageClipboard, clipboard_client) == 0) {
-				printf("Error on backup\n");
-			}
-		}
-		else if(messageClipboard.action == COPY) {
-			printf("\nCOPY\n");
-			if(copy(messageClipboard, clipboard_client) == 0) {
-				printf("Error on copy\n");
-			}
-		}
-	}
-	close(clipboard_client);
-	// Free the struct attach to the thread
-	clipboardThreadListRemove(threadInfo->thread_id);
-	printf("GoodBye - clipboardThread\n");
-}
-
 
 // Thread responsable to accept clipboards trying to connect to this one
 void * downThread(void * arg) {
@@ -573,7 +571,6 @@ void * downThread(void * arg) {
 	size_addr = sizeof(struct sockaddr);
 	
 	while(killSignal == 0) {
-printf(". downThread\n");
 		int clipboard_client = accept(client, (struct sockaddr *) &clientClipboard_addr, &size_addr);
 		if(clipboard_client != -1) {
 
@@ -585,9 +582,8 @@ printf(". downThread\n");
 
 			threadInfo->inputArgument = clipboard_client;
 			// Creates new thread to handle the comunicatuion with the client
-			pthread_create(&threadInfo->thread_id, NULL, &clipboardThread, threadInfo);
+			pthread_create(&threadInfo->thread_id, NULL, &clientThread, threadInfo);
 			clipboardThreadListAdd(threadInfo);
-			printf("Thread created clipboard - ID %lu\n",  threadInfo->thread_id);
 
 			size_addr = sizeof(struct sockaddr);			
 		}
@@ -608,8 +604,6 @@ void * upThread(void *arg) {
 	int receivedBytes = 0;
 
 	while(killSignal == 0) {
-printf(". upThread\n");
-
 		if(modeOfFunction == ONLINE) {
 			// Reads the message send by the upper Clipboards
 			receivedBytes = read(clipboardClient, &messageClipboard, sizeof(Message_struct));
@@ -683,7 +677,6 @@ printf(". upThread\n");
 			pthread_rwlock_wrlock(&rwlockClipboard);
 			// Erases old data
 			if(clipboard.clipboard[messageClipboard.region] != NULL) {
-				printf("Region cleared\n");
 				free(clipboard.clipboard[messageClipboard.region]);
 			}
 
@@ -692,8 +685,12 @@ printf(". upThread\n");
 			clipboard.size[messageClipboard.region] = size;
 			pthread_rwlock_unlock(&rwlockClipboard);
 
-			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
 
+			pthread_cond_signal(&condClipboard[messageClipboard.region]);
+
+			
+			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
+			
 			// Sends the new info to the down clipboards
 			pthread_rwlock_rdlock(&rwlockThreadList);
 			thread_info_struct *sendThreads = clipboardThreadList;
@@ -745,7 +742,6 @@ int main(int argc, char const *argv[])
 			exit(0);
 		}
 		else {
-			printf("Server with backup\n");
 			modeOfFunction = 1;
 		}
 
@@ -792,8 +788,6 @@ unlink(SOCKET_ADDR);
 
 		// Receives the backup from the other clipboard
 		backupCopy();
-
-		printf("Received backup\n");
 	}
 
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
@@ -833,6 +827,15 @@ unlink(SOCKET_ADDR);
 		exit(-1);
 	}
 
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		// Init the clipboard rwlock for the Clipboard
+		if(pthread_cond_init(&condClipboard[i], NULL) != 0) {
+			perror("conditional variable");
+			exit(-1);
+		}		
+	}
+
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
 	if(threadInfo == NULL) {
@@ -842,14 +845,11 @@ unlink(SOCKET_ADDR);
 
 	threadInfo->inputArgument = sock_fd_inet;
 	pthread_create(&threadInfo->thread_id, NULL, &downThread, threadInfo);
-	//printf("Thread created to handle clipboards down on the tree - ID %lu\n",  threadInfo->thread_id);
 
 
 	printf("Ready to accept clients\n");
 
 	while(1){
-//printf(". main\n");
-
 		// Reset hold variable
 		socklen_t size_addr = sizeof(struct sockaddr);
 
@@ -872,7 +872,6 @@ unlink(SOCKET_ADDR);
 		printf("Accepted connection\n");
 		// Creates new thread to handle the comunicatuion with the client
 		pthread_create(&threadInfo->thread_id, NULL, &clientThread, threadInfo);
-		printf("Thread created AT - ID %lu\n",  threadInfo->thread_id);
 
 	}
 	return 0;

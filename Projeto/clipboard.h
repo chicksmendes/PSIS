@@ -1,5 +1,6 @@
 #define UPDATE_FIFO "UPDATE_FIFO"
-#define BACKUP 2
+#define BACKUP 3
+#define WAIT 2
 #define PASTE 1
 #define COPY 0
 #define NUMBEROFPOSITIONS 10
@@ -51,3 +52,4 @@ typedef struct _updateMessage {
 int clipboard_connect(char * clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
+int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);

@@ -57,6 +57,21 @@ int main(){
 				printf("Received %d - data: %s\n", pasteData, dadosReceived);
 			}
 		}
+		else if(action == WAIT) {
+			// Ask the region from where will paste data
+			printf("Region [0-9]: ");
+			fgets(aux, 100, stdin);
+			sscanf(aux, "%d", &region);
+
+			// Sends the information to the clipboard
+			pasteData = clipboard_wait(sock_fd, region, dadosReceived, 100*sizeof(char));
+			if(pasteData < 1) {
+				printf("Didn't receive paste information\n");
+			}
+			else {
+				printf("Received %d - data: %s\n", pasteData, dadosReceived);
+			}
+		}
 		else {
 			printf("Closing connection\n");
 			break;
