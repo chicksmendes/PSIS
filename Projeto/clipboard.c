@@ -47,9 +47,11 @@ pthread_rwlock_t rwlockThreadList;
 
 // POSIX MUTEX
 pthread_mutex_t sendMutex;
+pthread_mutex_t waitingThreadsMutex;
 
 // POSIX CONDITIONAL VARIABLE
 pthread_cond_t condClipboard[NUMBEROFPOSITIONS];
+int waitingThreads[NUMBEROFPOSITIONS];
 
 // pipe for inter thread communication
 int pipeThread[2];
@@ -390,15 +392,22 @@ int paste(Message_struct messageReceived, int client) {
 int wait(Message_struct messageReceived, int client) {
 
 	int size = 0;
-	Message_struct messageSend;
 
 	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 	pthread_mutex_lock(&mutex);
 
+	pthread_mutex_lock(&waitingThreadsMutex);
+	waitingThreads[messageReceived.region]++;
+	pthread_mutex_unlock(&waitingThreadsMutex);
+
 	pthread_cond_wait(&condClipboard[messageReceived.region], &mutex);
 
 	pthread_mutex_unlock(&mutex);
+
+	pthread_mutex_lock(&waitingThreadsMutex);
+	waitingThreads[messageReceived.region]--;
+	pthread_mutex_unlock(&waitingThreadsMutex);
 
 	pthread_rwlock_rdlock(&rwlockClipboard);
 	if(clipboard.size[messageReceived.region] > messageReceived.size[messageReceived.region]) {
@@ -416,6 +425,7 @@ int wait(Message_struct messageReceived, int client) {
 		perror("wait");
 		exit(-1);
 	}
+
 	pthread_rwlock_wrlock(&rwlockClipboard);
 	memcpy(buff, clipboard.clipboard[messageReceived.region], size);
 	pthread_rwlock_unlock(&rwlockClipboard);
@@ -423,6 +433,8 @@ int wait(Message_struct messageReceived, int client) {
 	if(writeAll(client, buff, size) != size) {
 		perror("wait");
 	}	
+
+	free(buff);
 
 	pthread_mutex_destroy(&mutex);
 
@@ -685,8 +697,13 @@ void * upThread(void *arg) {
 			clipboard.size[messageClipboard.region] = size;
 			pthread_rwlock_unlock(&rwlockClipboard);
 
-
-			pthread_cond_signal(&condClipboard[messageClipboard.region]);
+			pthread_mutex_lock(&waitingThreadsMutex);
+			while(waitingThreads[messageClipboard.region] > 0)
+			{
+				pthread_cond_signal(&condClipboard[messageClipboard.region]);
+				waitingThreads[messageClipboard.region]--;
+			}
+			pthread_mutex_unlock(&waitingThreadsMutex);
 
 			
 			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
@@ -790,19 +807,6 @@ unlink(SOCKET_ADDR);
 		backupCopy();
 	}
 
-	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
-	if(threadInfo == NULL) {
-		perror("malloc");
-		exit(0);
-	}
-
-	threadInfo->inputArgument = sock_fd_inetIP;
-	pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
-
-	// Creates pipe for inter thread communication
-	createPipe();
-
-
 	// Init the clipboard rwlock for the Clipboard
 	if(pthread_rwlock_init(&rwlockClipboard, NULL) != 0) {
 		perror("rw_lock");
@@ -820,10 +824,16 @@ unlink(SOCKET_ADDR);
 		perror("rw_lock");
 		exit(-1);
 	}
-
+	
+	// Init the clipboard rwlock for the Thread List
+	if(pthread_mutex_init(&waitingThreadsMutex, NULL) != 0) {
+		perror("mutex");
+		exit(-1);
+	}
+	
 	// Init the clipboard rwlock for the Clipboard
 	if(pthread_mutex_init(&sendMutex, NULL) != 0) {
-		perror("rw_lock");
+		perror("mutex");
 		exit(-1);
 	}
 
@@ -833,8 +843,22 @@ unlink(SOCKET_ADDR);
 		if(pthread_cond_init(&condClipboard[i], NULL) != 0) {
 			perror("conditional variable");
 			exit(-1);
-		}		
+		}
+		waitingThreads[i] = 0;	
 	}
+
+	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
+	if(threadInfo == NULL) {
+		perror("malloc");
+		exit(0);
+	}
+
+	threadInfo->inputArgument = sock_fd_inetIP;
+	pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
+
+	// Creates pipe for inter thread communication
+	createPipe();
+
 
 	// Creates a thread to comunnicate with clipboards down on the tree
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
