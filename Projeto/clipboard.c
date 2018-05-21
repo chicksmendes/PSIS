@@ -60,14 +60,15 @@ int pipeThread[2];
 // Unlinks the sockets when the program stops
 void ctrl_c_callback_handler(int signum){
 	printf("aught signal Ctr-C\n");
+	// É uma região critia - A TRATAR!!!!
+	killSignal = 1;
 	// Closes the sockets
 	close(sock_fd_inet);
 
 	close(sock_fd_inetIP);
 
 	close(sock_fd_unix);
-	// É uma região critia - A TRATAR!!!!
-	killSignal = 1;
+
 	// Clears the clipboard
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
@@ -264,7 +265,7 @@ int readAll(int sock_fd, char *buf, int len) {
 
     while(total < len) {
         receiveBytes = read(sock_fd, buf+total, bytesleft);
-        if (receiveBytes == -1) { 
+        if (receiveBytes <= 0) { 
         	break; 
         }
         total += receiveBytes;
@@ -448,12 +449,12 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 	pthread_rwlock_rdlock(&rwlockClipboard);
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i) {
 		messageClipboard.size[i] = clipboard.size[i];
+		printf("paste - region %d - size %lu\n", i, messageClipboard.size[i]);
 	}
-	pthread_rwlock_unlock(&rwlockClipboard);
 
 	// Sends the amount of data present in the clipboard
-	write(clipboard_client, &messageClipboard, sizeof(Message_struct));
-
+	int writenBytes = writeAll(clipboard_client, (char *) &messageClipboard, sizeof(Message_struct));
+	printf("  writenBytes = %d %lu ", writenBytes, sizeof(Message_struct));
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
 		if(messageClipboard.size[i] != 0) {
@@ -463,9 +464,9 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 				exit(-1);
 			}
 			// Critical Region - Read
-			pthread_rwlock_rdlock(&rwlockClipboard);
+			//pthread_rwlock_rdlock(&rwlockClipboard);
 			memcpy(buff, clipboard.clipboard[i], messageClipboard.size[i]);
-			pthread_rwlock_unlock(&rwlockClipboard);
+			//pthread_rwlock_unlock(&rwlockClipboard);
 
 			if(writeAll(clipboard_client, buff, messageClipboard.size[i]) != messageClipboard.size[i]) {
 				perror("backup paste");
@@ -475,6 +476,7 @@ int backupPaste(Message_struct messageClipboard, int clipboard_client) {
 			free(buff);
 		} 
 	}
+	pthread_rwlock_unlock(&rwlockClipboard);
 	printf("backupPaste complete\n");
 
 	return 1;
@@ -492,18 +494,28 @@ int backupCopy() {
 
 	if(read(sock_fd_inetIP, &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
 		perror("Commucation");
+		return -1;
 	}
+
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		printf("paste - region %d - size %lu\n", i, messageClipboard.size[i]);
+	}
+
+	sleep(2);
 
 	printf("Performing backup\n");
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
 	{
+		printf("region %d size %lu\n", i, messageClipboard.size[i]);
 		if(messageClipboard.size[i] != 0) {
 			// New data received
 			char *data = NULL;
 			printf("region %d ", i);
 			data = (char *)malloc(sizeof(char)*messageClipboard.size[i]);
 			if(data == NULL) {
-				perror("malloc");
+				perror("backup: 1-malloc");
+				printf("%lu\n", messageClipboard.size[i]);
 				exit(0);
 			}
 
@@ -618,34 +630,32 @@ void * upThread(void *arg) {
 	while(killSignal == 0) {
 		if(modeOfFunction == ONLINE) {
 			// Reads the message send by the upper Clipboards
-			receivedBytes = read(clipboardClient, &messageClipboard, sizeof(Message_struct));
+			receivedBytes = readAll(clipboardClient, (char *) &messageClipboard, sizeof(Message_struct));
 			// If client sends EOF, terminates connection
-			if(receivedBytes == 0) {
+			if(receivedBytes <= 0) {
 				// Critical Region - Write
 				pthread_rwlock_wrlock(&rwlockModeOfFunction);
 				modeOfFunction = LOCAL;
 				pthread_rwlock_unlock(&rwlockModeOfFunction);
 				printf("Changed to LOCAL MODE\n");
-				continue;
+				break;
 			}
 			if(receivedBytes != sizeof(Message_struct)) {
-				perror("upThread");
+				perror("upThread1");
+				printf("1 Received %d , message %lu\n", receivedBytes, sizeof(Message_struct));
 				return NULL;
 			}
 		}
 		else if(modeOfFunction == LOCAL) {
 			// Reads the message send by the upper Clipboards
 			if(read(pipeThread[0], &messageClipboard, sizeof(Message_struct)) != sizeof(Message_struct)) {
-				perror("upThread");
+				perror("upThread2");
 				return NULL;
 			}
 		}
 
 
 		if(messageClipboard.action == COPY) {
-			//int error = 0;
-			//int success = 1;
-
 			// New data received
 			char *data = NULL;
 
@@ -664,23 +674,24 @@ void * upThread(void *arg) {
 				// Reads the message send by the upper Clipboards
 				receivedBytes = readAll(clipboardClient, data, size);
 				// If client sends EOF, terminates connection
-				if(receivedBytes == 0) {
+				if(receivedBytes  <= 0) {
 					// Critical Region - Write
 					pthread_rwlock_wrlock(&rwlockModeOfFunction);
 					modeOfFunction = LOCAL;
 					pthread_rwlock_unlock(&rwlockModeOfFunction);
 					printf("Changed to LOCAL MODE\n");
-					continue;
+					break;
 				}
 				if(receivedBytes != size) {
-					perror("upThread");
+					perror("upThread3");
+					printf("3 Received %d , message %lu\n", receivedBytes, sizeof(Message_struct));
 					return NULL;
 				}
 			}
 			else if(modeOfFunction == LOCAL) {
 				// Reads the message send by the upper Clipboards
 				if(readAll(pipeThread[0],  data, size) != size) {
-					perror("upThread");
+					perror("upThread4");
 					return NULL;
 				}
 			}
@@ -695,6 +706,8 @@ void * upThread(void *arg) {
 			// Assigns new data to the clipboard
 			clipboard.clipboard[messageClipboard.region] = data;
 			clipboard.size[messageClipboard.region] = size;
+			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
+			
 			pthread_rwlock_unlock(&rwlockClipboard);
 
 			pthread_mutex_lock(&waitingThreadsMutex);
@@ -705,8 +718,6 @@ void * upThread(void *arg) {
 			}
 			pthread_mutex_unlock(&waitingThreadsMutex);
 
-			
-			printf("Received %d bytes - data: %s\n", size, clipboard.clipboard[messageClipboard.region]);
 			
 			// Sends the new info to the down clipboards
 			pthread_rwlock_rdlock(&rwlockThreadList);
@@ -775,7 +786,7 @@ int main(int argc, char const *argv[])
 
 	// Creates port to comunnicate with clipboards down on the tree
 	srand(getpid());   // seeds the port number on the pid of the process
-	int portDown = rand()%(64738-1024) + 1024; 
+	int portDown = rand()%(99) + 8000; 
 
 	// Informs the user of what is the port to connect
 	printf("Port to acess machine: %d\n", portDown);
