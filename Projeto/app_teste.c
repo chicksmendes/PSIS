@@ -16,7 +16,7 @@ int main(){
 
 	while(1) {
 		// Ask the user the action that wants to perform
-		printf("\nCOPY [0], PASTE [1], WAIT [2]: ");
+		printf("\nCOPY [0] or PASTE [1]: ");
 		fgets(aux, 50, stdin);
 		sscanf(aux, "%d", &action);
 
@@ -64,7 +64,6 @@ int main(){
 			sscanf(aux, "%d", &region);
 
 			// Sends the information to the clipboard
-			pasteData = clipboard_wait(sock_fd, region, dadosReceived, 100*sizeof(char));
 			pasteData = clipboard_wait(sock_fd, region, dadosReceived, 100*sizeof(char));
 			if(pasteData < 1) {
 				printf("Didn't receive paste information\n");
