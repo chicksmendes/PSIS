@@ -8,21 +8,19 @@
 
 #include "threads.h"
 
-
-
 #define SOCKET_ADDR "./CLIPBOARD_SOCKET"
 #define ONLINE_FLAG "-c"
 
-#define LOCAL 0
-#define ONLINE 1
-
-typedef struct _clipboard {
-	char *data;
-	size_t size;
-} clipboard_struct;
 
 void ctrl_c_callback_handler(int signum);
 
 int randomPort();
 
+void connectUnix();
+
+void connect_inet(int portDown);
+
+void connect_inetIP(int port, char ip[]);
+
+void createPipe();
 #endif

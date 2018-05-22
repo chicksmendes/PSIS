@@ -6,9 +6,8 @@
 #include "clipboard.h"
 
 int main(){
-	/*int action, region;//,int copyData, pasteData;
-	char aux[100], dadosSent[100];
-	//char dadosReceived[100];
+	int action, region, copyData, pasteData;
+	char aux[100], dadosSent[100], dadosReceived[100];
 
 	// Connects to the cliboard
 	int sock_fd = clipboard_connect("./");
@@ -59,7 +58,7 @@ int main(){
 				printf("Received %d - data: %s\n", pasteData, dadosReceived);
 			}
 		}
-		else if(action == WAIT) {
+		/*else if(action == WAIT) {
 			// Ask the region from where will paste data
 			printf("Region [0-9]: ");
 			fgets(aux, 100, stdin);
@@ -73,13 +72,13 @@ int main(){
 			else {
 				printf("Received %d - data: %s\n", pasteData, dadosReceived);
 			}
-		}
+		}*/
 		else {
 			printf("Closing connection\n");
 			break;
 		}
 	}
 	
-	close(sock_fd);*/
+	close(sock_fd);
 	exit(0);
 }

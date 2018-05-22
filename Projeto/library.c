@@ -39,22 +39,31 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	int status = 1;
 
 	if(region > NUMBEROFPOSITIONS-1 || region < 0) {
+		printf("Invalid Region\n");
 		return 0;
 	}
 
-	// Loads the stuct with the information
+	// Carrega a mensagem com a acao pretendida
 	message.region = (size_t) region;
 	message.size = count;
 	message.action = COPY;
 
-	// Informs the server of the action that the client wants to take - COPY
-	write(clipboard_id, &message, sizeof(Message_struct));
-
+	// Informa o clipboard da ação que pretende realizar com ele - COPY
+	if(write(clipboard_id, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
+		printf("Cannot write to clipboard\n");
+		return 0;
+	}
+	// Le se o clipboard conseguiu alocar memoria para a mesagem que se quer enviar
+	if(read(clipboard_id, &status, sizeof(int)) != sizeof(int)) {
+		printf("Cannot read from clipboard\n");
+		return 0;
+	}
+	// Clipboard conseguiu alocar a memoria e está pronto a receber a informação
 	if(status == 1) {
-		// Sends the data to the clipboard
-		numberOfBytesSent =  writeAll(clipboard_id, buf, count*sizeof(char));
+		// Envia a informação para o clipboard
+		numberOfBytesSent =  write(clipboard_id, buf, count*sizeof(char));
 
-		// Tests if all the information was sent
+		// Verifica se a informação foi bem enviada
 		if(numberOfBytesSent != count*sizeof(char)) {
 			printf("Didn't send all the information to the clipboard\n");
 			return 0;
@@ -65,11 +74,52 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 		printf("Server cannot received data\n");
 		return 0;
 	}
-		
-	//printf("Sent %d bytes - data: %s\n", numberOfBytesSent, (char *) buf);
 
 	return numberOfBytesSent;
 }
+
+int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
+	Message_struct message;
+	int numberOfBytesReceived = 0;
+	int status = 0;
+
+	if(region > NUMBEROFPOSITIONS - 1 || region < 0) {
+		printf("Invalid Region\n");
+		return 0;
+	}
+
+	// Carrega a mensagem com a ação pretendida
+	message.region = region;
+	message.size = (size_t) count;
+	message.action = PASTE;
+
+	// Informs the server of the action that the client wants to take - PASTE
+	if(write(clipboard_id, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
+		printf("Cannot write to clipboard\n");
+		return 0;
+	}
+
+	// Reads if the slient has enough space to store the PASTE data
+	if(read(clipboard_id, &status, sizeof(int)) != sizeof(int)) {
+		printf("Cannot read from clipboard\n");
+		return 0;
+	}
+	if(status == 1) {
+		// Reads the information about the message stored at the cliboard
+		if(read(clipboard_id, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
+			printf("Cannot write to clipboard\n");
+			return 0;
+		}
+
+		// Reads the data from the clipboard
+		numberOfBytesReceived = read(clipboard_id, buf, message.size*sizeof(char));
+	}
+	else {
+		printf("Don't have enough space to store data\n");
+		return 0;
+	}
+	return numberOfBytesReceived;
+}
+
 /*
-int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);*/

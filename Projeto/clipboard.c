@@ -1,5 +1,8 @@
 #include "clipboardIntern.h"
 
+// Variavel que avisa quando é para desligar as threads
+int killSignal = 0;
+
 // Regioes do clipboard
 clipboard_struct clipboard[NUMBEROFPOSITIONS];
 
@@ -21,6 +24,9 @@ int sock_fd_inetIP;
 // Indica se o clipboard esta em modo local ou online
 int modeOfFunction;
 
+// Pipe para comunicação entre threads em local mode
+int pipeThread[2];
+
 
 /**
  * Unlinks the sockets when the program stops
@@ -28,21 +34,21 @@ int modeOfFunction;
  */
 void ctrl_c_callback_handler(int signum) {
 	printf("aught signal Ctr-C\n");
+	killSignal = 1;
 	close(sock_fd_unix);
+
 	// Closes the sockets
 	/*close(sock_fd_inet);
 
-	close(sock_fd_inetIP);
-
-	// É uma região critia - A TRATAR!!!!
-	killSignal = 1;
+	close(sock_fd_inetIP);*/
+	
 	// Clears the clipboard
-	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
-	{
-		free(clipboard.clipboard[i]);
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i) {
+		free(clipboard[i].data);
 	}
 	
-	unlink(SOCKET_ADDR);*/
+	unlink(SOCKET_ADDR);
+
 	exit(0);
 }
 
@@ -62,6 +68,9 @@ int randomPort() {
  * Coneta-se a um socket unix
  */
 void connectUnix() {
+	// Unlink do socket
+	unlink(SOCKET_ADDR);
+
 	// Create socket unix
 	sock_fd_unix = socket(AF_UNIX, SOCK_STREAM, 0);
 	if(sock_fd_unix == -1) {
@@ -83,6 +92,56 @@ void connectUnix() {
 	err_unix = listen(sock_fd_unix, 5);
 	if(err_unix == -1) {
 		perror("listen");
+		exit(-1);
+	}
+}
+
+// Coneta a um socket responsavel pelas ligacoes abaixo na arvore
+void connect_inet(int portDown) {
+	sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock_fd_inet == -1) {
+		perror("socket inet");
+		exit(-1);
+	}
+
+	local_addr_in.sin_family = AF_INET;
+	local_addr_in.sin_port= htons(portDown);
+	local_addr_in.sin_addr.s_addr= INADDR_ANY;
+	int err = bind(sock_fd_inet, (struct sockaddr *) &local_addr_in, sizeof(struct sockaddr_in));
+	if(err == -1) {
+		perror("bind");
+		exit(-1);
+	}
+
+	if(listen(sock_fd_inet, 2) == -1) {
+		perror("listen)");
+		exit(-1);
+	}
+}
+// Coneta a um socket responsavel pelas ligacoes acima na arvore
+void connect_inetIP(int port, char ip[]) {
+	sock_fd_inetIP = socket(AF_INET, SOCK_STREAM, 0);
+	if(sock_fd_inetIP == -1) {
+		perror("socket");
+		exit(-1);
+	}
+
+	upperClipboard_addr.sin_family = AF_INET;
+	upperClipboard_addr.sin_port= htons(port);
+	inet_aton(ip, &upperClipboard_addr.sin_addr);
+
+	if( -1 == connect(sock_fd_inetIP, (const struct sockaddr *) &upperClipboard_addr, sizeof(struct sockaddr_in))) {
+			printf("Error connecting to backup server\n");
+			exit(-1);
+	}
+}
+
+/**
+ * Inicializa um pipe
+ */
+void createPipe() {
+	if(pipe(pipeThread) != 0) {
+		perror("pipe");
 		exit(-1);
 	}
 }
@@ -133,10 +192,29 @@ int main(int argc, char const *argv[]) {
 		clipboard[i].size = 0;
 	}
 
+	//Ligação aos sockets
 	// Coneta-se ao socket de dominio unix
 	connectUnix();
+	// Coneta-se ao socket de dominio inet para comunicações abaixo na arvore
+	connect_inet(portDown);
+	// Se tiver online, coneta-se a um socket ao clipboard acima na arvore
+	if(modeOfFunction == ONLINE) {
+		connect_inetIP(portUp, ip);
+	}
+
+	// Cria um pipe para comunicar em modo local entre threads
+	createPipe();
 
 	thread_info_struct *threadInfo = NULL;
+
+	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
+	if(threadInfo == NULL) {
+		perror("malloc");
+		exit(0);
+	}
+
+	threadInfo->inputArgument = sock_fd_inetIP;
+	pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
 
 	printf("Ready to accept clients\n");
 
@@ -159,6 +237,7 @@ int main(int argc, char const *argv[]) {
 		}
 
 		threadInfo->inputArgument = client;
+		threadInfo->type = APP;
 
 		printf("Accepted connection\n");
 		// Creates new thread to handle the comunicatuion with the client
