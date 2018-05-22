@@ -27,7 +27,7 @@ typedef struct _clipboard {
 } clipboard_struct;
 
 typedef struct _message {
-	size_t size[NUMBEROFPOSITIONS];
+	size_t size;
 	int region;
 	int action;
 } Message_struct;

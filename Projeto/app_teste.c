@@ -1,12 +1,14 @@
-#include "clipboard.h"
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "clipboard.h"
+
 int main(){
-	int action, region, copyData, pasteData;
-	char aux[100], dadosSent[100], dadosReceived[100];
+	/*int action, region;//,int copyData, pasteData;
+	char aux[100], dadosSent[100];
+	//char dadosReceived[100];
 
 	// Connects to the cliboard
 	int sock_fd = clipboard_connect("./");
@@ -16,7 +18,7 @@ int main(){
 
 	while(1) {
 		// Ask the user the action that wants to perform
-		printf("\nCOPY [0] or PASTE [1]: ");
+		printf("\nCOPY [0], PASTE [1] or WAIT [2]: ");
 		fgets(aux, 50, stdin);
 		sscanf(aux, "%d", &action);
 
@@ -77,14 +79,7 @@ int main(){
 			break;
 		}
 	}
-
-	/*char dados[10];
-	int dados_int;
-	fgets(dados, 10, stdin);
-	write(fd, dados, 10);
-	read(fd+1, &dados_int, sizeof(dados_int));
-	printf("Received %d\n", dados_int);*/
 	
-	close(sock_fd);
+	close(sock_fd);*/
 	exit(0);
 }
