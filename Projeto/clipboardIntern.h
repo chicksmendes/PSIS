@@ -1,19 +1,14 @@
 #ifndef CLIPBOARDINTER_H
 #define CLIPBOARDINTER_H
 
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
-
-
-#include "threads.h"
 #include <signal.h>
 
-#define NUMBEROFPOSITIONS 10
-#define WAIT 2
-#define PASTE 1
-#define COPY 0
+#include "threads.h"
+
+
 
 #define SOCKET_ADDR "./CLIPBOARD_SOCKET"
 #define ONLINE_FLAG "-c"
@@ -26,10 +21,8 @@ typedef struct _clipboard {
 	size_t size;
 } clipboard_struct;
 
-typedef struct _message {
-	size_t size;
-	int region;
-	int action;
-} Message_struct;
+void ctrl_c_callback_handler(int signum);
+
+int randomPort();
 
 #endif

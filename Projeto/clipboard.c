@@ -1,8 +1,5 @@
 #include "clipboardIntern.h"
 
-
-
-
 // Regioes do clipboard
 clipboard_struct clipboard[NUMBEROFPOSITIONS];
 
@@ -29,7 +26,7 @@ int modeOfFunction;
  * Unlinks the sockets when the program stops
  * @param signum sinal do kernel
  */
-void ctrl_c_callback_handler(int signum){
+void ctrl_c_callback_handler(int signum) {
 	printf("aught signal Ctr-C\n");
 	close(sock_fd_unix);
 	// Closes the sockets
@@ -47,6 +44,18 @@ void ctrl_c_callback_handler(int signum){
 	
 	unlink(SOCKET_ADDR);*/
 	exit(0);
+}
+
+/**
+ * Gera o número do porto de forma aleatoria a partir do PID do processo
+ * @return número do porto
+ */
+int randomPort() {
+	// Creates port to comunnicate with clipboards down on the tree
+	srand(getpid());   // seeds the port number on the pid of the process
+	int portDown = rand()%(100) + 8000; 
+
+	return portDown;
 }
 
 /**

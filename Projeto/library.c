@@ -1,6 +1,5 @@
-
 #include "clipboard.h"
-
+#include "clipboardIntern.h"
 
 int clipboard_connect(char * clipboard_dir){
 	// Socket Structs
