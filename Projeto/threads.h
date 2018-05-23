@@ -40,6 +40,10 @@ typedef struct _thread_info_struct {
 	struct _thread_info_struct *next;
 } thread_info_struct;
 
+void clipboardThreadListAdd(thread_info_struct *new);
+
+void clipboardThreadListRemove(pthread_t thread_id);
+
 int writeAll(int sock_fd, char *buf, int len);
 
 int readAll(int sock_fd, char *buf, int len);
@@ -47,6 +51,8 @@ int readAll(int sock_fd, char *buf, int len);
 int copy(Message_struct messageReceived, int client, int type);
 
 int paste(Message_struct messageReceived, int client, int type);
+
+int backup(int client);
 
 int readUp(int client, void * data, size_t size);
 

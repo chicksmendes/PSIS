@@ -18,6 +18,52 @@ extern struct sockaddr_in clientClipboard_addr;
 extern int modeOfFunction;
 // Pipe para comunicação entre threads em local mode
 extern int pipeThread[2];
+// Lista de clipboards ligados a este
+thread_info_struct *clipboardThreadList = NULL;
+
+/**
+ * Adiciona uma estrutura de thread à lista de Threads
+ * @param new estrutura da nova thread
+ */
+void clipboardThreadListAdd(thread_info_struct *new) {
+	if(clipboardThreadList == NULL) {
+		new->next = NULL;
+		clipboardThreadList = new;
+	}
+	else {
+		new->next = clipboardThreadList;
+		clipboardThreadList = new;
+	}
+}
+
+/**
+ * Procura uma thread na lista de threads e remove-a da lista
+ * @param thread_id número da thread
+ */
+void clipboardThreadListRemove(pthread_t thread_id) {
+	thread_info_struct *aux = clipboardThreadList;
+	thread_info_struct *aux2 = NULL;
+	while(aux != NULL) {
+		if(aux->thread_id == thread_id) {
+			// Beggining of the list
+			if(aux->thread_id == clipboardThreadList->thread_id) {
+				clipboardThreadList = clipboardThreadList->next;
+				break;
+			}
+			// End of the list
+			else if(aux->next == NULL) {
+				aux2->next = NULL;
+				break;
+			}
+			// Midle of the list
+			aux2->next = aux->next;
+			break; 
+		}
+		aux2 = aux;
+		aux = aux->next;
+	}
+	free(aux);
+}
 
 /**
  * @brief      Attemps to write a buffer and if the write fails,
@@ -186,11 +232,12 @@ int paste(Message_struct messageReceived, int client, int type) {
 			exit(-2);
 		}
 	}
-
+	printf("Paste message send\n");
 	// Sends the data to the client
 	int numberOfBytesPaste = writeAll(client, buff, size);
 	if(numberOfBytesPaste != size) {
 		perror("paste");
+		printf("numberOfBytesPaste %d, size %d\n", numberOfBytesPaste, size);
 		if(type == APP) {
 			return(-1);
 		}
@@ -199,10 +246,36 @@ int paste(Message_struct messageReceived, int client, int type) {
 		}
 	}
 
+	printf("paste %d %s %d\n", messageReceived.region, buff, size);
+
 	free(buff);
 	
 	return 1;
 }
+
+/**
+ * Realiza pastes da informação contida no clipboard de modo a atualizar a inforamção do debaixo
+ * @param  client file descriptor do cliente
+ * @return        retorna 1 em caso de sucesso
+ */
+int backup(int client) {
+	Message_struct message;
+
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		if(clipboard[i].size != 0) {
+			printf("sending %d\n", i);
+			message.region = i;
+			if(paste(message, client, CLIPBOARD) == -1) {
+				printf("Can't paste backup, region %d\n", i);
+				exit(-2);
+			}
+		}
+	}
+
+	return 1;
+}
+
 
 
 /**
@@ -212,6 +285,13 @@ int paste(Message_struct messageReceived, int client, int type) {
 void * clientThread(void * arg) {
 	thread_info_struct *threadInfo = arg;
 	int client = threadInfo->inputArgument;
+
+	if(threadInfo->type == CLIPBOARD) {
+		printf("Backup - initialize\n");
+		backup(client);
+		clipboardThreadListAdd(threadInfo);
+		printf("Backup - complete\n");
+	}
 
 	Message_struct message;
 
@@ -242,8 +322,12 @@ void * clientThread(void * arg) {
 		}*/
 	}
 	close(client);
-	free(threadInfo);
 
+	// Caso seja um cliente, libertar a memoria
+	if(threadInfo->type == APP) {
+		free(threadInfo);
+	}
+	
 	printf("GoodBye - clientThread\n");
 
 	return NULL;
@@ -335,40 +419,57 @@ void * upThread(void * arg) {
 			continue;
 		}
 		
-		if(message.action == COPY) {
-			// Ponteiro para a nova informação
-			char *data = NULL;
-			// Allocs memory to store new data
-			data = (char *)malloc(message.size);
-			if(data == NULL) {
-				perror("malloc");
-				exit(-1);
-			}
-
-			// Le a nova informação proveniente do clipboard superior
-			receivedBytes = readUp(client, data, message.size);
-			if(receivedBytes == -1) {
-				printf("2\n");
-				continue;
-			}
-
-			// Replica a nova informação
-			char *aux = (char *)malloc(message.size);
-			memcpy(aux, data, message.size);
-
-			// Guarda a nova informação no clipboard
-			if(clipboard[message.region].data != NULL) {
-				printf("regiao limpa\n");
-				free(clipboard[message.region].data);
-			}
-			clipboard[message.region].data = data;
-			clipboard[message.region].size = message.size;
-
-			printf("Received %lu bytes - data: %s\n", message.size, clipboard[message.region].data);
-			
-			// Liberta o vetor auxiliar
-			free(aux);
+		// Ponteiro para a nova informação
+		char *data = NULL;
+		// Allocs memory to store new data
+		data = (char *)malloc(message.size);
+		if(data == NULL) {
+			perror("malloc");
+			exit(-1);
 		}
+
+		// Le a nova informação proveniente do clipboard superior
+		receivedBytes = readUp(client, data, message.size);
+		if(receivedBytes == -1) {
+			printf("2\n");
+			continue;
+		}
+
+		// Replica a nova informação
+		char *aux = (char *)malloc(message.size);
+		memcpy(aux, data, message.size);
+
+		// Guarda a nova informação no clipboard
+		if(clipboard[message.region].data != NULL) {
+			printf("regiao limpa\n");
+			free(clipboard[message.region].data);
+		}
+		clipboard[message.region].data = data;
+		clipboard[message.region].size = message.size;
+
+		printf("Received %lu bytes - data: %s region: %d\n", message.size, clipboard[message.region].data, message.region);
+
+		thread_info_struct *sendThreads = clipboardThreadList;
+		thread_info_struct *auxList = NULL;
+
+		while(sendThreads != NULL) {
+			auxList = sendThreads->next;
+			if(write(sendThreads->inputArgument, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
+				printf("Client disconected\n");
+				clipboardThreadListRemove(sendThreads->thread_id);
+			}
+			else if(writeAll(sendThreads->inputArgument, aux, message.size) != message.size) {
+				printf("Client disconected\n");
+				clipboardThreadListRemove(sendThreads->thread_id);
+			}
+
+			// Passes to the next clipboard
+			sendThreads = auxList;
+		}
+		
+		// Liberta o vetor auxiliar
+		free(aux);
+		
 	}
 
 	close(client);
@@ -402,9 +503,7 @@ void * downThread(void * arg) {
 			}
 
 			threadInfo->inputArgument = clipboard_client;
-
-			//backupCopy(clipboard_client);
-
+			threadInfo->type = CLIPBOARD;
 			// Creates new thread to handle the comunicatuion with the client
 			pthread_create(&threadInfo->thread_id, NULL, &clientThread, threadInfo);
 

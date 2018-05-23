@@ -35,19 +35,21 @@ int pipeThread[2];
 void ctrl_c_callback_handler(int signum) {
 	printf("aught signal Ctr-C\n");
 	killSignal = 1;
-	close(sock_fd_unix);
 
 	// Closes the sockets
-	/*close(sock_fd_inet);
-
-	close(sock_fd_inetIP);*/
+	close(sock_fd_unix);
 	
+	close(sock_fd_inet);
+
+	close(sock_fd_inetIP);
+	
+	unlink(SOCKET_ADDR);
+
 	// Clears the clipboard
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i) {
 		free(clipboard[i].data);
 	}
 	
-	unlink(SOCKET_ADDR);
 
 	exit(0);
 }
@@ -197,7 +199,7 @@ int main(int argc, char const *argv[]) {
 	connectUnix();
 	// Coneta-se ao socket de dominio inet para comunicações abaixo na arvore
 	connect_inet(portDown);
-	// Se tiver online, coneta-se a um socket ao clipboard acima na arvore
+	// Se tiver online, coneta-se a um socket inet ao clipboard acima na arvore
 	if(modeOfFunction == ONLINE) {
 		connect_inetIP(portUp, ip);
 	}
@@ -207,14 +209,27 @@ int main(int argc, char const *argv[]) {
 
 	thread_info_struct *threadInfo = NULL;
 
+	// Inicializa a upThread responsavel por receber as comunicações de cima da arvore
 	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
 	if(threadInfo == NULL) {
 		perror("malloc");
-		exit(0);
+		exit(-1);
 	}
 
 	threadInfo->inputArgument = sock_fd_inetIP;
 	pthread_create(&threadInfo->thread_id, NULL, &upThread, threadInfo);
+
+	// Inicializa a downThread responsável por aceitar as conecções de outros a este clipboard
+	threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
+	if(threadInfo == NULL) {
+		perror("malloc");
+		exit(-1);
+	}
+
+	threadInfo->inputArgument = sock_fd_inet;
+	pthread_create(&threadInfo->thread_id, NULL, &downThread, threadInfo);
+
+
 
 	printf("Ready to accept clients\n");
 
