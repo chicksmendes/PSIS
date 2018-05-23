@@ -27,11 +27,19 @@ extern pthread_rwlock_t rwlockClipboard;
 // Proteger a mudanca do modo de funcionamento
 pthread_rwlock_t rwlockModeOfFunction;
 
+
 // POSIX MUTEX
 // Proteger a escrita e leitura da lista de threads
 pthread_mutex_t threadListMutex;
 // Proteger que vários escrevam para o clipboard/pipe para transmitir a informação
 pthread_mutex_t sendMutex;
+
+pthread_mutex_t waitingThreadsMutex;
+
+// POSIX CONDITIONAL VARIABLE
+pthread_cond_t condClipboard[NUMBEROFPOSITIONS];
+// Numero de threads bloqueadas no wait por região
+int waitingThreads[NUMBEROFPOSITIONS];
 
 
 /**
@@ -46,6 +54,12 @@ int initMutex() {
 	}
 	// Inicia o mutex que impede que varios escrevam no socket superior
 	if(pthread_mutex_init(&sendMutex, NULL) != 0) {
+		perror("rw_lock");
+		exit(-1);
+	}
+
+	// Inicia o mutex que impede que varios escrevam no socket superior
+	if(pthread_mutex_init(&waitingThreadsMutex, NULL) != 0) {
 		perror("rw_lock");
 		exit(-1);
 	}
@@ -69,10 +83,29 @@ int initRWLock() {
 		perror("rw_lock");
 		exit(-1);
 	}
-	
 
 	return 1;
 }
+
+/**
+ * Inicializa os rwLocks do sistema
+ * @return [description]
+ */
+int initCondWait() {
+	// Inicia as variaveis de condição para as regioes do Clipboard
+	for (int i = 0; i < NUMBEROFPOSITIONS; ++i)
+	{
+		// Init the clipboard rwlock for the Clipboard
+		if(pthread_cond_init(&condClipboard[i], NULL) != 0) {
+			perror("conditional variable");
+			exit(-1);
+		}
+		waitingThreads[i] = 0;	
+	}
+
+	return 1;
+}
+
 
 
 /**
@@ -274,7 +307,6 @@ int paste(Message_struct messageReceived, int client, int type) {
 			return(-1);
 		}
 		else {
-			printf("success\n");
 			if(write(client, &success, sizeof(int)) != sizeof(int)) {
 				perror("paste");
 				return(-1);
@@ -291,11 +323,9 @@ int paste(Message_struct messageReceived, int client, int type) {
 
 	if(write(client, &messageSend, sizeof(Message_struct)) != sizeof(Message_struct)) {
 		if(type == APP) {
-			perror("write"); // PARA APAGARRRRRRRRRRRRRRRRRRRRRR
 			return(-1);
 		}
 		else if(type == CLIPBOARD) {
-			perror("write");
 			exit(-2);
 		}
 	}
@@ -314,6 +344,33 @@ int paste(Message_struct messageReceived, int client, int type) {
 
 	free(buff);
 	
+	return 1;
+}
+
+int wait(Message_struct messageReceived, int client) {
+
+	int size = 0;
+
+	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+	pthread_mutex_lock(&mutex);
+
+	pthread_mutex_lock(&waitingThreadsMutex);
+	waitingThreads[messageReceived.region]++;
+	pthread_mutex_unlock(&waitingThreadsMutex);
+
+	pthread_cond_wait(&condClipboard[messageReceived.region], &mutex);
+
+	pthread_mutex_unlock(&mutex);
+
+	pthread_mutex_lock(&waitingThreadsMutex);
+	waitingThreads[messageReceived.region]--;
+	pthread_mutex_unlock(&waitingThreadsMutex);
+
+	if(paste(messageReceived, client, APP) != 1) {
+		return -1;
+	} 
+
 	return 1;
 }
 
@@ -384,12 +441,12 @@ void * clientThread(void * arg) {
 				printf("Error on pasting\n");
 				break;
 			}
-		}/*
+		}
 		else if(message.action == WAIT) {
 			if(wait(message, client) == 0) {
 				printf("Error on wait\n");
 			}
-		}*/
+		}
 	}
 
 	close(client);
@@ -531,6 +588,14 @@ void * upThread(void * arg) {
 		clipboard[message.region].size = message.size;
 		printf("Received %lu bytes - data: %s region: %d\n", message.size, clipboard[message.region].data, message.region);
 		pthread_rwlock_unlock(&rwlockClipboard);
+
+		pthread_mutex_lock(&waitingThreadsMutex);
+		while(waitingThreads[message.region] > 0)
+		{
+			pthread_cond_signal(&condClipboard[message.region]);
+			waitingThreads[message.region]--;
+		}
+		pthread_mutex_unlock(&waitingThreadsMutex);
 
 		// Região crítica lista de threads - escrita e leitura
 		pthread_mutex_lock(&threadListMutex);

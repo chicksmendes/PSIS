@@ -209,9 +209,14 @@ int main(int argc, char const *argv[]) {
 		clipboard[i].size = 0;
 	}
 
+	// Inicia os RWLOCK
 	initRWLock();
 
+	// Inicia os MUTEX
 	initMutex();
+
+	// Inicia as Variaveis de confição
+	int initCondWait();
 
 	//Ligação aos sockets
 	// Coneta-se ao socket de dominio unix

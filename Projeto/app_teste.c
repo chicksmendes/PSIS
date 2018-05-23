@@ -58,7 +58,7 @@ int main(){
 				printf("Received %d - data: %s\n", pasteData, dadosReceived);
 			}
 		}
-		/*else if(action == WAIT) {
+		else if(action == WAIT) {
 			// Ask the region from where will paste data
 			printf("Region [0-9]: ");
 			fgets(aux, 100, stdin);
@@ -72,7 +72,7 @@ int main(){
 			else {
 				printf("Received %d - data: %s\n", pasteData, dadosReceived);
 			}
-		}*/
+		}
 		else {
 			printf("Closing connection\n");
 			break;

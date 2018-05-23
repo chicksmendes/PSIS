@@ -44,6 +44,8 @@ int initMutex();
 
 int initRWLock();
 
+int initCondWait();
+
 void clipboardThreadListAdd(thread_info_struct *new);
 
 void clipboardThreadListRemove(pthread_t thread_id);
@@ -55,6 +57,8 @@ int readAll(int sock_fd, char *buf, int len);
 int copy(Message_struct messageReceived, int client, int type);
 
 int paste(Message_struct messageReceived, int client, int type);
+
+int wait(Message_struct messageReceived, int client);
 
 int backup(int client);
 
