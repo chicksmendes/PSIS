@@ -40,6 +40,10 @@ typedef struct _thread_info_struct {
 	struct _thread_info_struct *next;
 } thread_info_struct;
 
+int initMutex();
+
+int initRWLock();
+
 void clipboardThreadListAdd(thread_info_struct *new);
 
 void clipboardThreadListRemove(pthread_t thread_id);
@@ -56,7 +60,7 @@ int backup(int client);
 
 int readUp(int client, void * data, size_t size);
 
-int writeUp(int client, Message_struct message, char * data);
+int writeUp(Message_struct message, char * data);
 
 void * clientThread(void * arg);
 

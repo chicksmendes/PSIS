@@ -16,6 +16,10 @@ void ctrl_c_callback_handler(int signum);
 
 int randomPort();
 
+
+
+
+
 void connectUnix();
 
 void connect_inet(int portDown);

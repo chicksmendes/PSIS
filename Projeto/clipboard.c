@@ -27,6 +27,11 @@ int modeOfFunction;
 // Pipe para comunicação entre threads em local mode
 int pipeThread[2];
 
+// POSIX RW LOCK
+// Proteger as regioes do clipboard
+pthread_rwlock_t rwlockClipboard;
+
+
 
 /**
  * Unlinks the sockets when the program stops
@@ -38,7 +43,7 @@ void ctrl_c_callback_handler(int signum) {
 
 	// Closes the sockets
 	close(sock_fd_unix);
-	
+
 	close(sock_fd_inet);
 
 	close(sock_fd_inetIP);
@@ -46,9 +51,11 @@ void ctrl_c_callback_handler(int signum) {
 	unlink(SOCKET_ADDR);
 
 	// Clears the clipboard
+	pthread_rwlock_wrlock(&rwlockClipboard);
 	for (int i = 0; i < NUMBEROFPOSITIONS; ++i) {
 		free(clipboard[i].data);
 	}
+	pthread_rwlock_unlock(&rwlockClipboard);
 	
 
 	exit(0);
@@ -65,6 +72,9 @@ int randomPort() {
 
 	return portDown;
 }
+
+
+
 
 /**
  * Coneta-se a um socket unix
@@ -194,6 +204,10 @@ int main(int argc, char const *argv[]) {
 		clipboard[i].size = 0;
 	}
 
+	initRWLock();
+
+	initMutex();
+
 	//Ligação aos sockets
 	// Coneta-se ao socket de dominio unix
 	connectUnix();
@@ -254,7 +268,7 @@ int main(int argc, char const *argv[]) {
 		threadInfo->inputArgument = client;
 		threadInfo->type = APP;
 
-		printf("Accepted connection\n");
+		printf("Accepted connection of app\n");
 		// Creates new thread to handle the comunicatuion with the client
 		pthread_create(&threadInfo->thread_id, NULL, &clientThread, threadInfo);
 	}

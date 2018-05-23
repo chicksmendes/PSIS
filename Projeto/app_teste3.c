@@ -3,10 +3,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <signal.h>
+
+void ctrl_c_callback_handler(int signum) {
+	close(sock_fd);
+
+	exit(0);
+}
 
 int main(){
-	int action, region, copyData, pasteData;
-	char dados[2], aux[50];
+	signal(SIGINT, ctrl_c_callback_handler);
+	int copyData;
+	char dados[2];
 
 	dados[1] = '\0';
 
@@ -28,6 +36,6 @@ int main(){
 		}
 	}
 	
-	close(sock_fd);
+	
 	exit(0);
 }
