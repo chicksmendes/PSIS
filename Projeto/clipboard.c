@@ -47,7 +47,11 @@ void ctrl_c_callback_handler(int signum) {
 	close(sock_fd_inet);
 
 	close(sock_fd_inetIP);
+
+	close(pipeThread[0]);
 	
+	close(pipeThread[1]);
+
 	unlink(SOCKET_ADDR);
 
 	// Clears the clipboard
@@ -163,6 +167,7 @@ void createPipe() {
 int main(int argc, char const *argv[]) {
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
 	signal(SIGINT, ctrl_c_callback_handler);
+	signal(SIGPIPE, SIG_IGN);
 
 	int portUp;
 	char ip[14];

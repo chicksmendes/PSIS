@@ -199,7 +199,11 @@ int copy(Message_struct messageReceived, int client, int type) {
 		printf("Erro a alocar memoria do cliente\n");
 		if(type == APP) {
 			// Informa a aplicacao que nao conseguiu alocar espaço
-			write(client, &error, sizeof(int));
+			if(write(client, &error, sizeof(int)) != sizeof(int)) {
+				perror("copy write");	
+				printf("Cliente descconetado\n");
+				return -1;
+			}
 			return -1;
 		}
 		else {
@@ -209,6 +213,8 @@ int copy(Message_struct messageReceived, int client, int type) {
 	// Informa aplicacao que esta pronto a receber a nova informação
 	if(type == APP) {
 		if(write(client, &success, sizeof(int)) != sizeof(int)) {
+			perror("copy write");
+			printf("Cliente descconetado\n");
 			return -1;
 		}
 	}
@@ -285,9 +291,11 @@ int paste(Message_struct messageReceived, int client, int type) {
 
 	if(write(client, &messageSend, sizeof(Message_struct)) != sizeof(Message_struct)) {
 		if(type == APP) {
+			perror("write"); // PARA APAGARRRRRRRRRRRRRRRRRRRRRR
 			return(-1);
 		}
 		else if(type == CLIPBOARD) {
+			perror("write");
 			exit(-2);
 		}
 	}
@@ -383,6 +391,7 @@ void * clientThread(void * arg) {
 			}
 		}*/
 	}
+
 	close(client);
 
 	// Caso seja um cliente, libertar a memoria

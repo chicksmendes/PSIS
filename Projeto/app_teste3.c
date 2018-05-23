@@ -5,7 +5,11 @@
 #include <string.h>
 #include <signal.h>
 
+int sock_fd;
+
 void ctrl_c_callback_handler(int signum) {
+	printf("CLOSE\n");
+
 	close(sock_fd);
 
 	exit(0);
@@ -19,7 +23,7 @@ int main(){
 	dados[1] = '\0';
 
 	// Connects to the cliboard
-	int sock_fd = clipboard_connect("./");
+	sock_fd = clipboard_connect("./");
 	if(sock_fd == -1){
 		exit(-1);
 	}
