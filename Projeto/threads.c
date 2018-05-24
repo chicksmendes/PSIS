@@ -153,14 +153,14 @@ void clipboardThreadListRemove(pthread_t thread_id) {
 }
 
 /**
- * @brief      Attemps to write a buffer and if the write fails,
- *             writes again the rest of the buffer 
+ * @brief      Escreve dados para um socket ou pipe, em caso de não ter conseguido 
+ * enviar tudo, tenta novamente até enviar tudo
  *
  * @param[in]  sock_fd  O file descriptor do socket
- * @param      buf      Informação
+ * @param      buf      Buffer para guardar informação
  * @param[in]  len      A quuatidade de informação que se pretende escrever
  *
- * @return     Returns the number of bytes writen or -1 in case of fail
+ * @return     Retorna o núumero de bytes lidos ou -1 em caso de perda de conecção
  */
 int writeAll(int sock_fd, char *buf, int len) {
 	// Number of bytes sent
@@ -181,14 +181,14 @@ int writeAll(int sock_fd, char *buf, int len) {
 }
 
 /**
- * @brief      Attemps to read a buffer and if the read fails,
- *             writes again the rest of the buffer 
+ * @brief      Le dados para um socket ou pipe, em caso de não ter conseguido 
+ * enviar tudo, tenta novamente até ler tudo
  *
- * @param[in]  sock_fd  The file descriptor of the socket
- * @param      buf      The buffer
- * @param[in]  len      The length of the buffer
+ * @param[in]  sock_fd  o file descriptor do cliente
+ * @param      buf      Buffer para guardar informação
+ * @param[in]  len      Número de bytes que se prentende ler
  *
- * @return     Returns the number of bytes read or -1 in case of fail
+ * @return     Retorna o núumero de bytes lidos ou -1 em caso de perda de conecção
  */
 int readAll(int sock_fd, char *buf, int len) {
 	// Number of bytes received
@@ -217,7 +217,7 @@ int readAll(int sock_fd, char *buf, int len) {
  * @param  messageReceived messagem com os dados sobre a nova informacao
  * @param  client          file descriptor do cliente
  * @param  type            refere a origem da mensagem - APP ou CLIPBOARD
- * @return                 -1 erro, 1 sucesso
+ * @return                 1 sucesso, -1 em caso de perda de conecção com o cliente
  */
 int copy(Message_struct messageReceived, int client, int type) {
 	// New data received
@@ -233,8 +233,6 @@ int copy(Message_struct messageReceived, int client, int type) {
 		if(type == APP) {
 			// Informa a aplicacao que nao conseguiu alocar espaço
 			if(write(client, &error, sizeof(int)) != sizeof(int)) {
-				perror("copy write");	
-				printf("Cliente descconetado\n");
 				return -1;
 			}
 			return -1;
@@ -246,22 +244,18 @@ int copy(Message_struct messageReceived, int client, int type) {
 	// Informa aplicacao que esta pronto a receber a nova informação
 	if(type == APP) {
 		if(write(client, &success, sizeof(int)) != sizeof(int)) {
-			perror("copy write");
-			printf("Cliente descconetado\n");
 			return -1;
 		}
 	}
 
 	// Recebe a data do cliente
 	if(readAll(client, data, messageReceived.size) != messageReceived.size) {
-		perror("copy");
 		return -1;
 	}
 
 	// Envia a nova informação para o clipboard que esteja em cima deste
 	pthread_mutex_lock(&sendMutex);
 	if(writeUp(messageReceived, data) == -1) {
-		printf("Error writing up\n");
 		return -1;
 	}
 	pthread_mutex_unlock(&sendMutex);
@@ -277,7 +271,7 @@ int copy(Message_struct messageReceived, int client, int type) {
  * @param  messageReceived messagem com os dados sobre a nova informacao
  * @param  client          file descriptor do cliente
  * @param  type            refere a origem da mensagem - APP ou CLIPBOARD
- * @return                 -1 erro, 1 sucesso
+ * @return                 1 sucesso, -1 em caso de perda de conecção
  */
 int paste(Message_struct messageReceived, int client, int type) {
 	int error = 0;
@@ -287,12 +281,13 @@ int paste(Message_struct messageReceived, int client, int type) {
 	pthread_rwlock_rdlock(&rwlockClipboard);
 	int size = clipboard[messageReceived.region].size;
 
+	// Aloca espaço para um buffer temporário
 	char *buff = (char*)malloc(size);
 	if(buff == NULL) {
 		perror("malloc");
 		exit(-1);
 	}
-
+	// Copia o conteúdo do clipboard para um buffer temporario
 	memcpy(buff, clipboard[messageReceived.region].data, size);
 	pthread_rwlock_unlock(&rwlockClipboard);
 
@@ -300,7 +295,6 @@ int paste(Message_struct messageReceived, int client, int type) {
 	if(type == APP) {
 		if(messageReceived.size < size) {
 			if(write(client, &error, sizeof(int)) != sizeof(int)) {
-				perror("paste");
 				return(-1);
 			}
 			// Caso o cliente nao tenha espaco suficiente, para a transmissao
@@ -308,7 +302,6 @@ int paste(Message_struct messageReceived, int client, int type) {
 		}
 		else {
 			if(write(client, &success, sizeof(int)) != sizeof(int)) {
-				perror("paste");
 				return(-1);
 			}
 		}
@@ -333,7 +326,6 @@ int paste(Message_struct messageReceived, int client, int type) {
 	// Sends the data to the client
 	int numberOfBytesPaste = writeAll(client, buff, size);
 	if(numberOfBytesPaste != size) {
-		perror("paste");
 		if(type == APP) {
 			return(-1);
 		}
@@ -342,31 +334,37 @@ int paste(Message_struct messageReceived, int client, int type) {
 		}
 	}
 
+	// Liberta o buffer temporario
 	free(buff);
 	
 	return 1;
 }
 
+/**
+ * Espera por uma nova infrmação aparecer numa região do clipboard e envia para o cliente
+ * @param  messageReceived mensagem com os parametros da acao pretendida
+ * @param  client          file descriptor do cliente
+ * @return                 1 em caso de sucesso, -1 em caso de perda de conecção
+ */
 int wait(Message_struct messageReceived, int client) {
 
 	int size = 0;
 
+	// Cria um mutex para esperar que chegue a nova informacao
 	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+	// Bloqueia o mutex temporario
 	pthread_mutex_lock(&mutex);
-
+	// Informa o programa que está à espera de informação numa determinada região
 	pthread_mutex_lock(&waitingThreadsMutex);
 	waitingThreads[messageReceived.region]++;
 	pthread_mutex_unlock(&waitingThreadsMutex);
-
+	// Bloqueia a thread à espera de nova informação
 	pthread_cond_wait(&condClipboard[messageReceived.region], &mutex);
 
 	pthread_mutex_unlock(&mutex);
 
-	pthread_mutex_lock(&waitingThreadsMutex);
-	waitingThreads[messageReceived.region]--;
-	pthread_mutex_unlock(&waitingThreadsMutex);
-
+	// Envia a informação para o cliente
 	if(paste(messageReceived, client, APP) != 1) {
 		return -1;
 	} 
@@ -427,24 +425,21 @@ void * clientThread(void * arg) {
 	while(killSignal == 0) {		
 		int numberOfBytesReceived = read(client, &message, sizeof(Message_struct));
 		if(numberOfBytesReceived <= 0) {
-			printf("Clipboard disconected\n");
 			break;
 		}
 		else if(message.action == COPY) {
 			if(copy(message, client, threadInfo->type) <= 0) {
-				printf("Error on copy\n");
 				break;
 			}
 		}
 		else if(message.action == PASTE) {
 			if(paste(message, client, threadInfo->type) <= 0) {
-				printf("Error on pasting\n");
 				break;
 			}
 		}
 		else if(message.action == WAIT) {
-			if(wait(message, client) == 0) {
-				printf("Error on wait\n");
+			if(wait(message, client) <= 0) {
+				break;
 			}
 		}
 	}
@@ -456,7 +451,7 @@ void * clientThread(void * arg) {
 		free(threadInfo);
 	}
 	
-	printf("GoodBye - clientThread\n");
+	printf("GoodBye - client\n");
 
 	return NULL;
 }
@@ -586,7 +581,7 @@ void * upThread(void * arg) {
 		}
 		clipboard[message.region].data = data;
 		clipboard[message.region].size = message.size;
-		printf("Received %lu bytes - data: %s region: %d\n", message.size, clipboard[message.region].data, message.region);
+		//printf("Received %lu bytes - data: %s region: %d\n", message.size, clipboard[message.region].data, message.region);
 		pthread_rwlock_unlock(&rwlockClipboard);
 
 		pthread_mutex_lock(&waitingThreadsMutex);
