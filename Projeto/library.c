@@ -38,8 +38,14 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	int numberOfBytesSent = 0;
 	int status = 1;
 
+	if(buf == NULL) {
+		printf("Buffer is pointing to NULL\n");
+		return 0;
+	}
+
+
 	if(region > NUMBEROFPOSITIONS-1 || region < 0) {
-		printf("Invalid Region\n");
+		printf("Invalid Region %d\n", region);
 		return 0;
 	}
 
@@ -82,6 +88,11 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 	Message_struct message;
 	int numberOfBytesReceived = 0;
 	int status = 0;
+
+	if(buf == NULL) {
+		printf("Buffer is pointing to NULL\n");
+		return 0;
+	}
 
 	if(region > NUMBEROFPOSITIONS - 1 || region < 0) {
 		printf("Invalid Region\n");
@@ -127,6 +138,11 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) {
 	int status = 0;
 	int receivedBytes = 0;
 
+	if(buf == NULL) {
+		printf("Buffer is pointing to NULL\n");
+		return 0;
+	}
+
 	if(region > NUMBEROFPOSITIONS - 1 || region < 0) {
 		printf("Wait region out of bounds\n");
 		return 0;
@@ -165,4 +181,8 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) {
 	}
 
 	return(receivedBytes);
+}
+
+void clipboard_close(int clipboard_id) {
+	close(clipboard_id);
 }

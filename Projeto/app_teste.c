@@ -6,7 +6,7 @@
 #include "clipboard.h"
 
 int main(){
-	int action, region, copyData, pasteData;
+	int action, copyData, pasteData;
 	char aux[100], dadosSent[100], dadosReceived[100];
 
 	// Connects to the cliboard
@@ -16,6 +16,7 @@ int main(){
 	}
 
 	while(1) {
+		int region = -1;
 		// Ask the user the action that wants to perform
 		printf("\nCOPY [0], PASTE [1] or WAIT [2]: ");
 		fgets(aux, 50, stdin);

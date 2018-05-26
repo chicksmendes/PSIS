@@ -72,16 +72,16 @@ void ctrl_c_callback_handler(int signum) {
 int randomPort() {
 	// Creates port to comunnicate with clipboards down on the tree
 	srand(getpid());   // seeds the port number on the pid of the process
-	int portDown = rand()%(100) + 8000; 
+	int port = rand()%(100) + 8000; 
 
-	return portDown;
+	return port;
 }
 
 
 
 
 /**
- * Coneta-se a um socket unix
+ * Coneta-se a um socket unix e realiza o bind ao mesmo
  */
 void connectUnix() {
 	// Unlink do socket
@@ -112,29 +112,51 @@ void connectUnix() {
 	}
 }
 
-// Coneta a um socket responsavel pelas ligacoes abaixo na arvore
-void connect_inet(int portDown) {
+
+/**
+ * Coneta a um socket responsavel pelas ligacoes abaixo na arvore, imprime no ecra esse porto
+ */
+int connect_inet() {
+	int port;
+	int err = -1;
+	
 	sock_fd_inet = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_fd_inet == -1) {
 		perror("socket inet");
 		exit(-1);
 	}
 
-	local_addr_in.sin_family = AF_INET;
-	local_addr_in.sin_port= htons(portDown);
-	local_addr_in.sin_addr.s_addr= INADDR_ANY;
-	int err = bind(sock_fd_inet, (struct sockaddr *) &local_addr_in, sizeof(struct sockaddr_in));
-	if(err == -1) {
-		perror("bind");
-		exit(-1);
+	// Itera vários portos até encontrar um disponivel para fazer bind
+	while(err == -1) {
+		port = randomPort();
+		local_addr_in.sin_family = AF_INET;
+		local_addr_in.sin_port= htons(port);
+		local_addr_in.sin_addr.s_addr= INADDR_ANY;
+
+		err = bind(sock_fd_inet, (struct sockaddr *) &local_addr_in, sizeof(struct sockaddr_in));
+		if(err != -1) {
+			// Caso consiga fazer o bind, para o ciclo;
+			break;
+		}
 	}
 
 	if(listen(sock_fd_inet, 2) == -1) {
 		perror("listen)");
 		exit(-1);
 	}
+
+	// Imprime o porto para aceder ao clipboard
+	printf("Port to acess machine: %d\n", port);
+
+	return port;
 }
-// Coneta a um socket responsavel pelas ligacoes acima na arvore
+
+
+/**
+ * Coneta a um socket responsavel pelas ligacoes acima na arvore
+ * @param port número do porto
+ * @param ip   IP do outro computador
+ */
 void connect_inetIP(int port, char ip[]) {
 	sock_fd_inetIP = socket(AF_INET, SOCK_STREAM, 0);
 	if(sock_fd_inetIP == -1) {
@@ -197,11 +219,6 @@ int main(int argc, char const *argv[]) {
 		exit(0);
 	}
 
-	int portDown = randomPort();
-
-	// Imprime o porto para aceder ao clipboard
-	printf("Port to acess machine: %d\n", portDown);
-
 	// Inicializa o clipboard
 	for (int i = 0; i < 10; i++)
 	{
@@ -222,7 +239,7 @@ int main(int argc, char const *argv[]) {
 	// Coneta-se ao socket de dominio unix
 	connectUnix();
 	// Coneta-se ao socket de dominio inet para comunicações abaixo na arvore
-	connect_inet(portDown);
+	connect_inet();
 	// Se tiver online, coneta-se a um socket inet ao clipboard acima na arvore
 	if(modeOfFunction == ONLINE) {
 		connect_inetIP(portUp, ip);

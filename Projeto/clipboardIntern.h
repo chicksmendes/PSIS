@@ -22,7 +22,7 @@ int randomPort();
 
 void connectUnix();
 
-void connect_inet(int portDown);
+int connect_inet();
 
 void connect_inetIP(int port, char ip[]);
 
