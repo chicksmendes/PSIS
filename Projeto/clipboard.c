@@ -184,14 +184,29 @@ void createPipe() {
 	}
 }
 
+void initClipboard() {
+	for (int i = 0; i < NUMBEROFPOSITIONS; i++)
+	{
+		clipboard[i].data = NULL;
+		clipboard[i].size = 0;
+	}
+}
+
 
 
 int main(int argc, char const *argv[]) {
 	// Atach the ctrl_c_callback_handler to the SIGINT signal
-	signal(SIGINT, ctrl_c_callback_handler);
-	signal(SIGPIPE, SIG_IGN);
+	if(signal(SIGINT, ctrl_c_callback_handler) == SIG_ERR) {
+		printf("Falha de sistema - signal handler\n");
+		exit(-3);
+	}
+	// Ignora o signal pipe, é tratado pela aplicação
+	if(signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+		printf("Falha de sistema - signal pipe\n");
+		exit(-3);
+	}
 
-	int portUp;
+	int portUp = -1;
 	char ip[14];
 
 	if(argc == 1) {
@@ -220,11 +235,7 @@ int main(int argc, char const *argv[]) {
 	}
 
 	// Inicializa o clipboard
-	for (int i = 0; i < 10; i++)
-	{
-		clipboard[i].data = NULL;
-		clipboard[i].size = 0;
-	}
+	initClipboard();
 
 	// Inicia os RWLOCK
 	initRWLock();

@@ -1,6 +1,12 @@
 #include "clipboard.h"
 #include "clipboardIntern.h"
 
+
+/**
+ * Connects to a fifo with the name declared as input
+ * @param  clipboard_dir descrição do path do file descriptor do fifo
+ * @return               valor do fifo para aceder ao clipboard, -1 em caso de erro
+ */
 int clipboard_connect(char * clipboard_dir){
 	// Socket Structs
 	struct sockaddr_un server_addr;
@@ -33,6 +39,15 @@ int clipboard_connect(char * clipboard_dir){
 
 	return sock_fd;
 }
+
+/** 
+ * Copia a informação apontada por buf, com tamanho count para uma regiao do clipboard
+ * @param  clipboard_id número do fifo devlvido pelo connect
+ * @param  region       regiao onde se quer guardar a informacao
+ * @param  buf          ponteiro para a data
+ * @param  count        número de bytes da data
+ * @return              número de bytes copiados em caso de sucesso, -1 em caso de erro
+ */
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	Message_struct message;
 	int numberOfBytesSent = 0;
@@ -84,6 +99,14 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	return numberOfBytesSent;
 }
 
+/**
+ * Devolve a informação de uma região do clipboard, guarda na variavel apontada por buf, com tamanho count
+ * @param  clipboard_id número do fifo devlvido pelo connect
+ * @param  region       regiao onde se quer obter a informacao
+ * @param  buf          ponteiro para a data
+ * @param  count        número de bytes da data
+ * @return              número de bytes obtidos do clipboard em caso de sucesso, -1 em caso de erro
+ */
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 	Message_struct message;
 	int numberOfBytesReceived = 0;
@@ -132,7 +155,15 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 	return numberOfBytesReceived;
 }
 
-
+/**
+ * Espera por uma nova informação numa regiao do clipboard. 
+ * Devolve a informação de uma região do clipboard, guarda na variavel apontada por buf, com tamanho count
+ * @param  clipboard_id número do fifo devlvido pelo connect
+ * @param  region       regiao onde se quer obter a informacao
+ * @param  buf          ponteiro para a data
+ * @param  count        número de bytes da data
+ * @return              número de bytes obtidos do clipboard em caso de sucesso, -1 em caso de erro
+ */
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) {
 	Message_struct message;
 	int status = 0;
@@ -183,6 +214,10 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) {
 	return(receivedBytes);
 }
 
+/**
+ * Fecha a conecção com o clipboard
+ * @param clipboard_id desciptor do connect
+ */
 void clipboard_close(int clipboard_id) {
 	close(clipboard_id);
 }

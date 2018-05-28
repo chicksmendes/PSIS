@@ -44,7 +44,7 @@ int waitingThreads[NUMBEROFPOSITIONS];
 
 /**
  * Inicializa os mutex do sistema
- * @return [description]
+ * @return 1 em caso de sucesso
  */
 int initMutex() {
 	// Inicia o mutex para a lista de threads (clipboards)
@@ -88,7 +88,7 @@ int initRWLock() {
 }
 
 /**
- * Inicializa os rwLocks do sistema
+ * Inicializa os conditional waits do sistema
  * @return [description]
  */
 int initCondWait() {
@@ -347,9 +347,6 @@ int paste(Message_struct messageReceived, int client, int type) {
  * @return                 1 em caso de sucesso, -1 em caso de perda de conecção
  */
 int wait(Message_struct messageReceived, int client) {
-
-	int size = 0;
-
 	// Cria um mutex para esperar que chegue a nova informacao
 	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -384,9 +381,11 @@ int backup(int client) {
 	{
 		// Região critica clipboard - leitura
 		pthread_rwlock_rdlock(&rwlockClipboard);
+		// Caso o clipboard tenha informação
 		if(clipboard[i].size != 0) {
 			pthread_rwlock_unlock(&rwlockClipboard);
 			message.region = i;
+			// Envia a informação para o clipboard filho
 			if(paste(message, client, CLIPBOARD) == -1) {
 				printf("Can't paste backup, region %d\n", i);
 				exit(-2);
@@ -410,11 +409,13 @@ void * clientThread(void * arg) {
 	thread_info_struct *threadInfo = arg;
 	int client = threadInfo->inputArgument;
 
+	// Caso a thread seja iniciada para responder a um clipboard, envia lhe o backup da informacao corrente
 	if(threadInfo->type == CLIPBOARD) {
 		backup(client);
 
 		// Região critica lista de threads - escrita
 		pthread_mutex_lock(&threadListMutex);
+		// Adiciona o clipboard à lista de threads para propagar a informação
 		clipboardThreadListAdd(threadInfo);
 		pthread_mutex_unlock(&threadListMutex);
 	}
@@ -424,6 +425,7 @@ void * clientThread(void * arg) {
 	// Loop de comunicacao com o cliente
 	while(killSignal == 0) {		
 		int numberOfBytesReceived = read(client, &message, sizeof(Message_struct));
+		// Em caso de erro ou EOF, fecha a conecção
 		if(numberOfBytesReceived <= 0) {
 			break;
 		}
@@ -456,10 +458,17 @@ void * clientThread(void * arg) {
 	return NULL;
 }
 
+/**
+ * Le a informação - mensagem mais data - de um clipboard de cima
+ * @param  message messagem com os dados sobre a nova informacao
+ * @param  data    vetor com a inforamcao
+ * @return         -1 erro; 0 sucesso
+ */
 int readUp(int client, void * data, size_t size) {
 	int receivedBytes = 0;
 
 	pthread_rwlock_rdlock(&rwlockModeOfFunction);
+	// Caso o clipboard tenha um pai, le a informacao por socket
 	if(modeOfFunction == ONLINE) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		receivedBytes = readAll(client, data, size);
@@ -478,6 +487,8 @@ int readUp(int client, void * data, size_t size) {
 			exit(-2);
 		}
 	}
+	// Caso o clipboard esteja em modo local, 
+	// le a informacao emviada pela client threads
 	else if(modeOfFunction == LOCAL) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		if(read(pipeThread[0], data, size) != size) {
@@ -489,6 +500,7 @@ int readUp(int client, void * data, size_t size) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 	}
 
+	// Devolve o número de bytes recebido
 	return receivedBytes;
 }
 
@@ -500,6 +512,7 @@ int readUp(int client, void * data, size_t size) {
  */
 int writeUp(Message_struct message, char * data) {
 	pthread_rwlock_rdlock(&rwlockModeOfFunction);
+	// Caso o clipboard tenha um pai, envia lhe a informacao por socket inet
 	if(modeOfFunction == ONLINE) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		if(write(sock_fd_inetIP, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
@@ -512,7 +525,7 @@ int writeUp(Message_struct message, char * data) {
 			return -1;
 		}
 	}
-	// Sends the update to the upper thread trow the pipe
+	// Caso esteja em modo loca, escreve a informação para um pipe para ser lida pela upThread
 	else if(modeOfFunction == LOCAL) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		if(write(pipeThread[1], &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
@@ -533,7 +546,8 @@ int writeUp(Message_struct message, char * data) {
 }
 
 /**
- * Thread responsavel por receber as atualizações vindas de cima da arvore e as propagar para baixo
+ * Thread responsavel por receber as atualizações vindas de cima da arvore, guardar no clipboard local
+ *  e as propagar para baixo na arvore de clipboards
  * 			em modo ONLINE - le do socket 		em modo LOCAL - le do pipe
  * @param  arg estrutura com as informacoes sobre a thread
  * @return     [description]
@@ -627,7 +641,8 @@ void * upThread(void * arg) {
 }
 
 /**
- * Thread responsavel por aceitar conecçoes debaixo e atualizar estas com a informação que existe no clipboard
+ * Thread responsavel por aceitar conecçoes debaixo e atualizar 
+ * estas com a informação que existe no clipboard
  * @param  arg estrutura com as informacoes sobre a thread
  */
 void * downThread(void * arg) {
@@ -660,4 +675,6 @@ void * downThread(void * arg) {
 	}
 	free(threadInfo);
 	printf("GoodBye - downThread\n");
+
+	return NULL;
 }
