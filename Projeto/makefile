@@ -19,7 +19,7 @@ app2:  library.c app_files.c
 	gcc  app_files.c library.c -g -o app2 $(CFLAGS)
 
 app3:  library.c app_teste3.c
-	gcc  app_teste3.c library.c -g -o app3 $(CFLAGS)
+	gcc  app_teste3.c library.c -O2 -o app3 $(CFLAGS)
 
 clean:
 	rm -f *.o app1 app2 app3 clipboard

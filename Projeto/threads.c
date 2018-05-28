@@ -654,25 +654,26 @@ void * downThread(void * arg) {
 	size_addr = sizeof(struct sockaddr);
 	
 	while(killSignal == 0) {
+		// Aceita a conecção de clipboards
 		int clipboard_client = accept(client, (struct sockaddr *) &clientClipboard_addr, &size_addr);
 		if(clipboard_client != -1) {
-			
+			// Aloca uma estrutura com as informações de arranque de uma thread
 			thread_info_struct *threadInfo = (thread_info_struct *)malloc(sizeof(thread_info_struct));
 			if(threadInfo == NULL) {
 				perror("malloc");
 				exit(0);
 			}
-
 			threadInfo->inputArgument = clipboard_client;
 			threadInfo->type = CLIPBOARD;
-			// Creates new thread to handle the comunicatuion with the client
+			// Inicia uma nova thread para comunicar com o cliente
 			pthread_create(&threadInfo->thread_id, NULL, &clientThread, threadInfo);
 			printf("Accepted connection of clipboard\n");
-			
+			// Reinicia a variavel para poder corretamente fazer accept
 			size_addr = sizeof(struct sockaddr);	
 		}
 
 	}
+	// Limpa a estrutra dá própria thread
 	free(threadInfo);
 	printf("GoodBye - downThread\n");
 
