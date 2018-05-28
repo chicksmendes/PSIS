@@ -10,7 +10,7 @@ int sock_fd;
 void ctrl_c_callback_handler(int signum) {
 	printf("CLOSE\n");
 
-	close(sock_fd);
+	clipboard_close(sock_fd);
 
 	exit(0);
 }
