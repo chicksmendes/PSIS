@@ -33,7 +33,7 @@ pthread_rwlock_t rwlockModeOfFunction;
 pthread_mutex_t threadListMutex;
 // Proteger que vários escrevam para o clipboard/pipe para transmitir a informação
 pthread_mutex_t sendMutex;
-
+// Proteger o adicionar e remover de clients a espera com wait
 pthread_mutex_t waitingThreadsMutex;
 
 // POSIX CONDITIONAL VARIABLE

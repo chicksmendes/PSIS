@@ -1,7 +1,6 @@
 #include "clipboard.h"
 #include "clipboardIntern.h"
 
-
 /**
  * Connects to a fifo with the name declared as input
  * @param  clipboard_dir descrição do path do file descriptor do fifo
