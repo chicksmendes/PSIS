@@ -3,7 +3,7 @@ CFLAGS= -O2 -Wall -std=gnu11
 
 default: allin
 
-allin: opt app1 app2
+allin: opt app1 app2 app3
 
 opt: threads.c clipboard.c library.c
 	gcc  threads.c library.c clipboard.c -o clipboard  -lpthread -I -O2 -Wall -std=gnu11
@@ -19,5 +19,8 @@ app1:  library.c sendFiles.c
 app2:  library.c sendAll.c
 	gcc  sendAll.c library.c -o app2 $(CFLAGS)
 
+app3:  library.c app_forksthreads.c
+	gcc  app_forksthreads.c library.c -o app3 -lpthread -I $(CFLAGS)
+
 clean:
-	rm -f *.o app1 app2 clipboard
+	rm -f *.o app1 app2 app3 clipboard

@@ -405,62 +405,6 @@ int backup(int client) {
 
 
 
-/**
- * Thread responsavel por receber os pedidos dos clientes e fazer as ações por este pretendidas
- * @param  arg estrutura com as informacoes sobre a thread
- */
-void * clientThread(void * arg) {
-	thread_info_struct *threadInfo = arg;
-	int client = threadInfo->inputArgument;
-
-	// Caso a thread seja iniciada para responder a um clipboard, envia lhe o backup da informacao corrente
-	if(threadInfo->type == CLIPBOARD) {
-		backup(client);
-
-		// Região critica lista de threads - escrita
-		pthread_mutex_lock(&threadListMutex);
-		// Adiciona o clipboard à lista de threads para propagar a informação
-		clipboardThreadListAdd(threadInfo);
-		pthread_mutex_unlock(&threadListMutex);
-	}
-
-	Message_struct message;
-
-	// Loop de comunicacao com o cliente
-	while(killSignal == 0) {		
-		int numberOfBytesReceived = read(client, &message, sizeof(Message_struct));
-		// Em caso de erro ou EOF, fecha a conecção
-		if(numberOfBytesReceived <= 0) {
-			break;
-		}
-		else if(message.action == COPY) {
-			if(copy(message, client, threadInfo->type) <= 0) {
-				break;
-			}
-		}
-		else if(message.action == PASTE) {
-			if(paste(message, client, threadInfo->type) == -1) {
-				break;
-			}
-		}
-		else if(message.action == WAIT) {
-			if(wait(message, client) == -1) {
-				break;
-			}
-		}
-	}
-
-	close(client);
-
-	// Caso seja um cliente, libertar a memoria
-	if(threadInfo->type == APP) {
-		free(threadInfo);
-	}
-	
-	printf("GoodBye - client\n");
-
-	return NULL;
-}
 
 /**
  * Le a informação - mensagem mais data - de um clipboard de cima
@@ -550,6 +494,66 @@ int writeUp(Message_struct message, char * data) {
 }
 
 /**
+ * Thread responsavel por receber os pedidos dos clientes e fazer as ações por este pretendidas
+ * @param  arg estrutura com as informacoes sobre a thread
+ */
+void * clientThread(void * arg) {
+	thread_info_struct *threadInfo = arg;
+	int client = threadInfo->inputArgument;
+
+	// Caso a thread seja iniciada para responder a um clipboard, envia lhe o backup da informacao corrente
+	if(threadInfo->type == CLIPBOARD) {
+		backup(client);
+
+		// Região critica lista de threads - escrita
+		pthread_mutex_lock(&threadListMutex);
+		// Adiciona o clipboard à lista de threads para propagar a informação
+		clipboardThreadListAdd(threadInfo);
+		pthread_mutex_unlock(&threadListMutex);
+	}
+
+	Message_struct message;
+
+	// Loop de comunicacao com o cliente
+	while(killSignal == 0) {		
+		int numberOfBytesReceived = read(client, &message, sizeof(Message_struct));
+		// Em caso de erro ou EOF, fecha a conecção
+		if(numberOfBytesReceived <= 0) {
+			break;
+		}
+		else if(message.action == COPY) {
+			if(copy(message, client, threadInfo->type) <= 0) {
+				break;
+			}
+		}
+		else if(message.action == PASTE) {
+			if(paste(message, client, threadInfo->type) == -1) {
+				break;
+			}
+		}
+		else if(message.action == WAIT) {
+			if(wait(message, client) == -1) {
+				break;
+			}
+		}
+	}
+
+	close(client);
+	// Liberta os recursos da thread para o sistema
+	pthread_detach(threadInfo->thread_id);
+
+	// Caso seja um cliente, libertar a memoria
+	if(threadInfo->type == APP) {
+		free(threadInfo);
+	}
+	
+	printf("GoodBye - client\n");
+
+	return NULL;
+}
+
+
+/**
  * Thread responsavel por receber as atualizações vindas de cima da arvore, guardar no clipboard local
  *  e as propagar para baixo na arvore de clipboards
  * 			em modo ONLINE - le do socket 		em modo LOCAL - le do pipe
@@ -635,8 +639,12 @@ void * upThread(void * arg) {
 		free(aux);
 		
 	}
-
+	// Fecha a ligação ao socket
 	close(client);
+
+	// Liberta os recursos da thread para o sistema
+	pthread_detach(threadInfo->thread_id);
+
 	free(threadInfo);
 
 	printf("GoodBye - upThread\n");
@@ -679,6 +687,10 @@ void * downThread(void * arg) {
 	}
 	// Limpa a estrutra dá própria thread
 	free(threadInfo);
+
+	// Liberta os recursos da thread para o sistema
+	pthread_detach(threadInfo->thread_id);
+
 	printf("GoodBye - downThread\n");
 
 	return NULL;

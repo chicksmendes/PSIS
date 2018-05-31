@@ -1,4 +1,3 @@
-#include "clipboard.h"
 #include <sys/types.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -6,6 +5,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+
+#include "clipboard.h"
+
 #define MESSAGE_SIZE 10000
 
 void *ola(void * xx){
