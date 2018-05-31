@@ -50,4 +50,5 @@ void createPipe();
  * Inicia as regiões do clipboard
  */
 void initClipboard();
+
 #endif
