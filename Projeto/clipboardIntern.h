@@ -8,7 +8,6 @@
 
 #include "threads.h"
 
-#define SOCKET_ADDR "./CLIPBOARD_SOCKET"
 #define ONLINE_FLAG "-c"
 
 /**

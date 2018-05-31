@@ -5,6 +5,8 @@
 #include <string.h>
 #include <signal.h>
 
+#define MAX 9000
+
 int sock_fd;
 
 void ctrl_c_callback_handler(int signum) {
@@ -17,7 +19,7 @@ void ctrl_c_callback_handler(int signum) {
 
 int main(){
 	signal(SIGINT, ctrl_c_callback_handler);
-	int copyData;
+	int copyData, i;
 	char dados[2];
 
 	dados[1] = '\0';
@@ -27,7 +29,8 @@ int main(){
 	if(sock_fd == -1){
 		exit(-1);
 	}
-	while(1) {
+	i = 0;
+	while(i < MAX) {
 		dados[0] = rand()%(122-65)+65;
 
 		// Sends the data to the cliboard server
@@ -38,8 +41,10 @@ int main(){
 		else {
 			//printf("Sent %d - data: %s\n", copyData, dados);
 		}
+		i++;
 	}
-	
+	printf("Finish sending %d\n", MAX);
+	clipboard_close(sock_fd);
 	
 	exit(0);
 }

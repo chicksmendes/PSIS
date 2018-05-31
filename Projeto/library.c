@@ -52,12 +52,13 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	int numberOfBytesSent = 0;
 	int status = 1;
 
+	// Se o ponteiro tiver vazio, não faz copy
 	if(buf == NULL) {
 		printf("Buffer is pointing to NULL\n");
 		return 0;
 	}
 
-
+	// Confirma a região
 	if(region > NUMBEROFPOSITIONS-1 || region < 0) {
 		printf("Invalid Region %d\n", region);
 		return 0;
@@ -111,11 +112,13 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 	int numberOfBytesReceived = 0;
 	int status = 0;
 
+	// Se o ponteiro tiver vazio, não faz paste
 	if(buf == NULL) {
 		printf("Buffer is pointing to NULL\n");
 		return 0;
 	}
 
+	// Confirma a região
 	if(region > NUMBEROFPOSITIONS - 1 || region < 0) {
 		printf("Invalid Region\n");
 		return 0;

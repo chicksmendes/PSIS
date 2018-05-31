@@ -1,3 +1,6 @@
+#ifndef CLIPBOARD_H
+#define CLIPBOARD_H
+
 #include "clipboardIntern.h"
 
 // Nome do file descriptor a ser utilizado
@@ -46,3 +49,5 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
  * @param clipboard_id desciptor do connect
  */
 void clipboard_close(int clipboard_id);
+
+#endif

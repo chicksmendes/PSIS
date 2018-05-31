@@ -1,7 +1,6 @@
 #ifndef THREADS_H
 #define THREADS_H
 
-
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/socket.h>
@@ -11,7 +10,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// Número de posições do clipboard
 #define NUMBEROFPOSITIONS 10
+
+// Constantes de funcionamento do programa
 #define WAIT 2
 #define PASTE 1
 #define COPY 0

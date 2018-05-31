@@ -1,4 +1,5 @@
 #include "clipboardIntern.h"
+#include "clipboard.h"
 
 // Variavel que avisa quando é para desligar as threads
 int killSignal = 0;
@@ -281,10 +282,8 @@ int main(int argc, char const *argv[]) {
 	threadInfo->inputArgument = sock_fd_inet;
 	pthread_create(&threadInfo->thread_id, NULL, &downThread, threadInfo);
 
-
-
 	printf("Ready to accept clients\n");
-
+	// Aceita aplicacoes que se tentem ligar ao cliboarc
 	while(1){
 		// Reset hold variable
 		socklen_t size_addr = sizeof(struct sockaddr);
