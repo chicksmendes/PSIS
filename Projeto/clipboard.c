@@ -39,7 +39,7 @@ pthread_rwlock_t rwlockClipboard;
  * @param signum sinal do kernel
  */
 void ctrl_c_callback_handler(int signum) {
-	printf("aught signal Ctr-C\n");
+	
 	killSignal = 1;
 
 	// Closes the sockets
@@ -61,8 +61,7 @@ void ctrl_c_callback_handler(int signum) {
 		free(clipboard[i].data);
 	}
 	pthread_rwlock_unlock(&rwlockClipboard);
-	
-
+	printf("Clipboard Closed\n");
 	exit(0);
 }
 

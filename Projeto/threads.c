@@ -271,7 +271,7 @@ int copy(Message_struct messageReceived, int client, int type) {
  * @param  messageReceived messagem com os dados sobre a nova informacao
  * @param  client          file descriptor do cliente
  * @param  type            refere a origem da mensagem - APP ou CLIPBOARD
- * @return                 1 sucesso, -1 em caso de perda de conecção
+ * @return                 1 sucesso, -1 em caso de perda de conecção, -2 cliente não os requisitos para receber a informacao
  */
 int paste(Message_struct messageReceived, int client, int type) {
 	int error = 0;
@@ -298,7 +298,7 @@ int paste(Message_struct messageReceived, int client, int type) {
 				return(-1);
 			}
 			// Caso o cliente nao tenha espaco suficiente, para a transmissao
-			return(-1);
+			return(-2);
 		}
 		else {
 			if(write(client, &success, sizeof(int)) != sizeof(int)) {
@@ -362,9 +362,13 @@ int wait(Message_struct messageReceived, int client) {
 	pthread_mutex_unlock(&mutex);
 
 	// Envia a informação para o cliente
-	if(paste(messageReceived, client, APP) != 1) {
+	int returnValue = paste(messageReceived, client, APP);
+	if(returnValue == -1) {
 		return -1;
-	} 
+	}
+	else if(returnValue == -2) {
+		return -2;
+	}
 
 	return 1;
 }
@@ -435,12 +439,12 @@ void * clientThread(void * arg) {
 			}
 		}
 		else if(message.action == PASTE) {
-			if(paste(message, client, threadInfo->type) <= 0) {
+			if(paste(message, client, threadInfo->type) == -1) {
 				break;
 			}
 		}
 		else if(message.action == WAIT) {
-			if(wait(message, client) <= 0) {
+			if(wait(message, client) == -1) {
 				break;
 			}
 		}
