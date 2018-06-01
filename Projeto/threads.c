@@ -217,7 +217,7 @@ int readAll(int sock_fd, char *buf, int len) {
  * @param  messageReceived messagem com os dados sobre a nova informacao
  * @param  client          file descriptor do cliente
  * @param  type            refere a origem da mensagem - APP ou CLIPBOARD
- * @return                 1 sucesso, -1 em caso de perda de conecção com o cliente
+ * @return                 1 sucesso, -1 em caso de perda de conecção com o cliente, -2 parametros errados
  */
 int copy(Message_struct messageReceived, int client, int type) {
 	// New data received
@@ -225,6 +225,15 @@ int copy(Message_struct messageReceived, int client, int type) {
 
 	int success = 1;
 	int error = 0;
+
+	// Caso as regioes estejam fora das possiveis
+	if(messageReceived.region > NUMBEROFPOSITIONS - 1 || messageReceived.region < 0) {
+		if(write(client, &error, sizeof(int)) != sizeof(int)) {
+			return -1;
+		}
+		// Caso o cliente tente aceder a uma regiao proibida, bloqueia a acao
+		return(-2);
+	}
 
 	// Aloca memória para guardar a nova informação
 	data = (char *)malloc(sizeof(char)*messageReceived.size);
@@ -277,6 +286,17 @@ int paste(Message_struct messageReceived, int client, int type) {
 	int error = 0;
 	int success = 1;
 	
+	// Cofirma se a regiao esta dentro das possiveis quando envia algo para a app
+	if(type == APP) {
+		if(messageReceived.region > NUMBEROFPOSITIONS - 1 || messageReceived.region < 0) {
+			if(write(client, &error, sizeof(int)) != sizeof(int)) {
+				return(-1);
+			}
+			// Caso o cliente tente aceder a uma regiao proibida, bloqueia a acao
+			return(-2);
+		}
+	}
+
 	// Região critica clipboard - leitura
 	pthread_rwlock_rdlock(&rwlockClipboard);
 	int size = clipboard[messageReceived.region].size;
@@ -347,6 +367,17 @@ int paste(Message_struct messageReceived, int client, int type) {
  * @return                 1 em caso de sucesso, -1 em caso de perda de conecção
  */
 int wait(Message_struct messageReceived, int client) {
+	int error = 0;
+
+	// Caso as regioes estejam fora das possiveis, para a ação
+	if(messageReceived.region > NUMBEROFPOSITIONS - 1 || messageReceived.region < 0) {
+		if(write(client, &error, sizeof(int)) != sizeof(int)) {
+			return(-1);
+		}
+		// Caso o cliente tente aceder a uma regiao proibida, bloqueia a acao
+		return(-2);
+	}
+
 	// Cria um mutex para esperar que chegue a nova informacao
 	pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -531,7 +562,7 @@ void * clientThread(void * arg) {
 			break;
 		}
 		else if(message.action == COPY) {
-			if(copy(message, client, threadInfo->type) <= 0) {
+			if(copy(message, client, threadInfo->type) == -1) {
 				break;
 			}
 		}
