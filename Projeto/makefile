@@ -9,9 +9,9 @@ opt: threads.c clipboard.c library.c
 	gcc  threads.c library.c clipboard.c -o clipboard  -lpthread -I -O2 -Wall -std=gnu11
 
 debug:  threads.c clipboard.c library.c
-	gcc -c threads.c $(CFLAGS) -lpthread -I.
-	gcc -c library.c $(CFLAGS)
-	gcc  clipboard.c -lpthread -I. threads.o  library.o -o clipboard $(CFLAGS)
+	gcc -c threads.c $(GFLAGS) -lpthread -I.
+	gcc -c library.c $(GFLAGS)
+	gcc  clipboard.c -lpthread -I. threads.o  library.o -o clipboard $(GFLAGS)
 
 app1:  library.c sendFiles.c
 	gcc  sendFiles.c library.c -o app1 $(GFLAGS)

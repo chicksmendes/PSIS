@@ -276,7 +276,7 @@ int copy(Message_struct messageReceived, int client, int type) {
 int paste(Message_struct messageReceived, int client, int type) {
 	int error = 0;
 	int success = 1;
-
+	
 	// Região critica clipboard - leitura
 	pthread_rwlock_rdlock(&rwlockClipboard);
 	int size = clipboard[messageReceived.region].size;
@@ -376,7 +376,7 @@ int wait(Message_struct messageReceived, int client) {
 /**
  * Realiza pastes da informação contida no clipboard de modo a atualizar a inforamção do debaixo
  * @param  client file descriptor do cliente
- * @return        retorna 1 em caso de sucesso
+ * @return        retorna 1 em caso de sucesso, -1 em caso de falha
  */
 int backup(int client) {
 	Message_struct message;
@@ -392,7 +392,7 @@ int backup(int client) {
 			// Envia a informação para o clipboard filho
 			if(paste(message, client, CLIPBOARD) == -1) {
 				printf("Can't paste backup, region %d\n", i);
-				exit(-2);
+				return -1;
 			}
 		}
 		else {
@@ -439,7 +439,8 @@ int readUp(int client, void * data, size_t size) {
 	// le a informacao emviada pela client threads
 	else if(modeOfFunction == LOCAL) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
-		if(read(pipeThread[0], data, size) != size) {
+		receivedBytes = readAll(pipeThread[0], data, size);
+		if(receivedBytes != size) {
 			perror("readUp");
 			exit(-2);
 		}
@@ -503,7 +504,15 @@ void * clientThread(void * arg) {
 
 	// Caso a thread seja iniciada para responder a um clipboard, envia lhe o backup da informacao corrente
 	if(threadInfo->type == CLIPBOARD) {
-		backup(client);
+		if(backup(client) == -1) {
+			close(client);
+			// Liberta os recursos da thread para o sistema
+			pthread_detach(threadInfo->thread_id);
+			// Liberta a memoria alocada para a thread
+			free(threadInfo);
+
+			return NULL;
+		}
 
 		// Região critica lista de threads - escrita
 		pthread_mutex_lock(&threadListMutex);
@@ -603,7 +612,7 @@ void * upThread(void * arg) {
 		}
 		clipboard[message.region].data = data;
 		clipboard[message.region].size = message.size;
-		//printf("Received %lu bytes - data: %s region: %d\n", message.size, clipboard[message.region].data, message.region);
+		printf("Received %d bytes - region: %d\n", receivedBytes, message.region);
 		pthread_rwlock_unlock(&rwlockClipboard);
 
 		pthread_mutex_lock(&waitingThreadsMutex);

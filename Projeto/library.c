@@ -2,6 +2,36 @@
 #include "clipboardIntern.h"
 
 /**
+ * @brief      Le dados para um socket ou pipe, em caso de não ter conseguido 
+ * enviar tudo, tenta novamente até ler tudo
+ *
+ * @param[in]  sock_fd  o file descriptor do cliente
+ * @param      buf      Buffer para guardar informação
+ * @param[in]  len      Número de bytes que se prentende ler
+ *
+ * @return     Retorna o núumero de bytes lidos ou -1 em caso de perda de conecção
+ */
+int readEverything(int sock_fd, char *buf, int len) {
+	// Number of bytes received
+	int total = 0;
+	// Number of bytes left to receive
+    int bytesleft = len;
+    int receiveBytes;
+
+    while(total < len) {
+        receiveBytes = read(sock_fd, buf+total, bytesleft);
+        if(receiveBytes <= 0) { 
+        	return -1; 
+        }
+        total += receiveBytes;
+        bytesleft -= receiveBytes;
+    }
+
+    // Returns -1 if cannot receive information, returns total bytes receive otherwise
+    return total; 
+}
+
+/**
  * Connects to a fifo with the name declared as input
  * @param  clipboard_dir descrição do path do file descriptor do fifo
  * @return               valor do fifo para aceder ao clipboard, -1 em caso de erro
@@ -65,7 +95,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 	}
 
 	// Carrega a mensagem com a acao pretendida
-	message.region = (size_t) region;
+	message.region = region;
 	message.size = count;
 	message.action = COPY;
 
@@ -148,7 +178,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count) {
 		}
 
 		// Reads the data from the clipboard
-		numberOfBytesReceived = read(clipboard_id, buf, message.size*sizeof(char));
+		numberOfBytesReceived = readEverything(clipboard_id, buf, message.size*sizeof(char));
 	}
 	else {
 		printf("Don't have enough space to store data\n");
@@ -206,7 +236,7 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count) {
 		}
 
 		// Reads the data from the clipboard
-		receivedBytes = read(clipboard_id, buf, message.size*sizeof(char));
+		receivedBytes = readEverything(clipboard_id, buf, message.size*sizeof(char));
 	}
 	else {
 		printf("Don't have enough space to store data\n");
