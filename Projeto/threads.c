@@ -687,7 +687,7 @@ void * upThread(void * arg) {
 		}
 		clipboard[message.region].data = data;
 		clipboard[message.region].size = message.size;
-		printf("Received %s %d bytes - region: %d\n", clipboard[message.region].data, receivedBytes, message.region);
+		//printf("Received %s %d bytes - region: %d\n", clipboard[message.region].data, receivedBytes, message.region);
 		pthread_rwlock_unlock(&rwlockClipboard);
 
 		pthread_mutex_lock(&waitingThreadsMutex);
