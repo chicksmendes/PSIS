@@ -88,6 +88,11 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count) {
 		return 0;
 	}
 
+	if(count < 0) {
+		printf("Count infirior to zero\n");
+		return 0;
+	}
+
 	// Confirma a região
 	if(region > NUMBEROFPOSITIONS-1 || region < 0) {
 		printf("Invalid Region %d\n", region);

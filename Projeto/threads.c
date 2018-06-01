@@ -199,8 +199,11 @@ int readAll(int sock_fd, char *buf, int len) {
 
     while(total < len) {
         receiveBytes = read(sock_fd, buf+total, bytesleft);
-        if(receiveBytes <= 0) { 
+        if(receiveBytes < 0) { 
         	return -1; 
+        }
+        if(receiveBytes == 0) { 
+        	return 0; 
         }
         total += receiveBytes;
         bytesleft -= receiveBytes;
@@ -228,6 +231,15 @@ int copy(Message_struct messageReceived, int client, int type) {
 
 	// Caso as regioes estejam fora das possiveis
 	if(messageReceived.region > NUMBEROFPOSITIONS - 1 || messageReceived.region < 0) {
+		if(write(client, &error, sizeof(int)) != sizeof(int)) {
+			return -1;
+		}
+		// Caso o cliente tente aceder a uma regiao proibida, bloqueia a acao
+		return(-2);
+	}
+	
+	// Tamanho é inferior a zero
+	if(messageReceived.size < 0) {
 		if(write(client, &error, sizeof(int)) != sizeof(int)) {
 			return -1;
 		}
@@ -264,9 +276,13 @@ int copy(Message_struct messageReceived, int client, int type) {
 
 	// Envia a nova informação para o clipboard que esteja em cima deste
 	pthread_mutex_lock(&sendMutex);
-	if(writeUp(messageReceived, data) == -1) {
+	int nbWriteUp = writeUp(messageReceived, data);
+	if(nbWriteUp == -1) {
+		pthread_mutex_unlock(&sendMutex);
+		free(data);
 		return -1;
 	}
+
 	pthread_mutex_unlock(&sendMutex);
 
 	// Clears the memory allocated to receive the message
@@ -449,6 +465,7 @@ int readUp(int client, void * data, size_t size) {
 	pthread_rwlock_rdlock(&rwlockModeOfFunction);
 	// Caso o clipboard tenha um pai, le a informacao por socket
 	if(modeOfFunction == ONLINE) {
+		//printf("ReadUp online\n");
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		receivedBytes = readAll(client, data, size);
 		// Se cliente mandar EOF - termina a conecção
@@ -469,8 +486,9 @@ int readUp(int client, void * data, size_t size) {
 	// Caso o clipboard esteja em modo local, 
 	// le a informacao emviada pela client threads
 	else if(modeOfFunction == LOCAL) {
+		//printf("ReadUp local\n");
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
-		receivedBytes = readAll(pipeThread[0], data, size);
+		receivedBytes = read(pipeThread[0], data, size);
 		if(receivedBytes != size) {
 			perror("readUp");
 			exit(-2);
@@ -488,33 +506,50 @@ int readUp(int client, void * data, size_t size) {
  * Escreve a informação para o clipboard acima deste, ou para o pipe quando em modo local
  * @param  message messagem com os dados sobre a nova informacao
  * @param  data    vetor com a inforamcao
- * @return         -1 erro; 0 sucesso
+ * @return         -1 erro; 0 conecção desligada com o pai; 1 sucesso
  */
 int writeUp(Message_struct message, char * data) {
 	pthread_rwlock_rdlock(&rwlockModeOfFunction);
 	// Caso o clipboard tenha um pai, envia lhe a informacao por socket inet
 	if(modeOfFunction == ONLINE) {
+		//printf("WriteUp\n");
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
-		if(write(sock_fd_inetIP, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
-			perror("copy");
+		int writeBytes = write(sock_fd_inetIP, &message, sizeof(Message_struct));
+		// Se cliente mandar EOF - termina a conecção
+		if(writeBytes <= 0) {
+			// Critical Region - Write
+			pthread_rwlock_wrlock(&rwlockModeOfFunction);
+			modeOfFunction = LOCAL;
+			pthread_rwlock_unlock(&rwlockModeOfFunction);
+			printf("Changed to LOCAL MODE\n");
+			return 0;
+		}
+		else if(writeBytes != sizeof(Message_struct)) {
 			return -1;
 		}
-
-		if(writeAll(sock_fd_inetIP, data, message.size) != message.size) {
-			perror("copy");
-			return -1;
+		else if(writeBytes == sizeof(Message_struct)) {
+			writeBytes = writeAll(sock_fd_inetIP, data, message.size);
+			if(writeBytes <= 0) {
+				// Critical Region - Write
+				pthread_rwlock_wrlock(&rwlockModeOfFunction);
+				modeOfFunction = LOCAL;
+				pthread_rwlock_unlock(&rwlockModeOfFunction);
+				printf("Changed to LOCAL MODE\n");
+				return 0;
+			}	
+			if(writeBytes != message.size) {
+				return -1;
+			}
 		}
 	}
 	// Caso esteja em modo loca, escreve a informação para um pipe para ser lida pela upThread
 	else if(modeOfFunction == LOCAL) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 		if(write(pipeThread[1], &message, sizeof(Message_struct)) != sizeof(Message_struct)) {
-			perror("copy");
 			return -1;
 		}
 
 		if(writeAll(pipeThread[1], data, message.size) != message.size) {
-			perror("copy");
 			return -1;
 		}
 	}
@@ -522,7 +557,7 @@ int writeUp(Message_struct message, char * data) {
 		pthread_rwlock_unlock(&rwlockModeOfFunction);
 	}
 
-	return 0;
+	return 1;
 }
 
 /**
@@ -613,6 +648,7 @@ void * upThread(void * arg) {
 		// Le a mensagem que o clipboard superior está a enviar
 		receivedBytes = readUp(client, &message, sizeof(Message_struct));
 		if(receivedBytes == -1) {
+			//printf("continue 1\n");
 			continue;
 		}
 
@@ -628,6 +664,7 @@ void * upThread(void * arg) {
 		// Le a nova informação proveniente do clipboard superior
 		receivedBytes = readUp(client, data, message.size);
 		if(receivedBytes == -1) {
+			//printf("continue 2\n");
 			continue;
 		}
 
@@ -643,7 +680,7 @@ void * upThread(void * arg) {
 		}
 		clipboard[message.region].data = data;
 		clipboard[message.region].size = message.size;
-		printf("Received %d bytes - region: %d\n", receivedBytes, message.region);
+		printf("Received %s %d bytes - region: %d\n", clipboard[message.region].data, receivedBytes, message.region);
 		pthread_rwlock_unlock(&rwlockClipboard);
 
 		pthread_mutex_lock(&waitingThreadsMutex);
@@ -659,6 +696,7 @@ void * upThread(void * arg) {
 		thread_info_struct *sendThreads = clipboardThreadList;
 		thread_info_struct *auxList = NULL;
 
+		// Envia a nova informacao para baixo na arvore
 		while(sendThreads != NULL) {
 			auxList = sendThreads->next;
 			if(write(sendThreads->inputArgument, &message, sizeof(Message_struct)) != sizeof(Message_struct)) {

@@ -5,7 +5,7 @@
 #include <string.h>
 #include <signal.h>
 
-#define MAX 9000
+#define MAX 1000000
 
 int sock_fd;
 
