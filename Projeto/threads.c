@@ -614,13 +614,20 @@ void * clientThread(void * arg) {
 	}
 
 	close(client);
-	// Liberta os recursos da thread para o sistema
-	pthread_detach(threadInfo->thread_id);
 
 	// Caso seja um cliente, libertar a memoria
 	if(threadInfo->type == APP) {
 		free(threadInfo);
 	}
+	// Remove o cliente da lista de threads a propagar
+	else if(threadInfo->type == CLIPBOARD) {
+		pthread_mutex_lock(&threadListMutex);
+		clipboardThreadListRemove(threadInfo->thread_id);
+		pthread_mutex_unlock(&threadListMutex);
+	}
+	
+	// Liberta os recursos da thread para o sistema
+	pthread_detach(threadInfo->thread_id);
 	
 	printf("GoodBye - client\n");
 
